@@ -1,121 +1,150 @@
-<!--
-Into the Forge - Single-file HTML Game Template
-All code, styles, and assets must be embedded in this file.
--->
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <title>Into the Forge</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Forgeborn: Solstice Break</title>
   <style>
-    html, body { height: 100%; margin: 0; padding: 0; background: #181c24; }
-    body { width: 100vw; height: 100vh; overflow: hidden; font-family: 'Segoe UI', Arial, sans-serif; }
-    #game-container { position: relative; width: 100vw; height: 100vh; }
-    #game-canvas { width: 100%; height: 100%; background: #232b36; display: block; }
-    #start-overlay {
-      position: fixed;
-      top: 0; left: 0; width: 100vw; height: 100vh;
-      background: linear-gradient(135deg, #232b36 60%, #3a4660 100%);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      z-index: 1000;
-      transition: opacity 0.3s;
-    }
-    #start-title {
-      font-size: 2.8em;
-      font-family: 'Orbitron', 'Segoe UI', Arial, sans-serif;
-      color: #ffb347;
-      text-shadow: 0 0 12px #ffb347, 0 0 32px #ffb347;
-      margin-bottom: 24px;
-      letter-spacing: 2px;
-    }
-    #start-btn {
-      background: linear-gradient(90deg, #ffb347 0%, #ff7f50 100%);
-      border: none;
-      color: #232b36;
-      font-family: 'Orbitron', 'Segoe UI', Arial, sans-serif;
-      font-size: 1.3em;
-      cursor: pointer;
-      border-radius: 20px;
-      min-width: 180px;
-      text-align: center;
-      padding: 14px 32px;
-      margin-bottom: 18px;
-      box-shadow: 0 0 18px #ffb34766;
-      transition: all 0.2s;
-    }
-    #start-btn:hover {
-      background: linear-gradient(90deg, #ff7f50 0%, #ffb347 100%);
-      color: #181c24;
-      box-shadow: 0 0 32px #ffb347bb;
-      transform: scale(1.04);
-    }
-    #start-credit {
-      color: #fff;
-      font-size: 0.95em;
-      opacity: 0.7;
-      text-shadow: 1px 1px 8px #000;
-    }
+    html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; }
+    body { background: #111; }
+    canvas { border: 2px solid #333; display: block; position: absolute; top: 0; left: 0; }
   </style>
 </head>
 <body>
-  <div id="game-container">
-    <canvas id="game-canvas" width="800" height="600"></canvas>
-    <div id="start-overlay">
-      <div id="start-title">Into the Forge</div>
-      <button id="start-btn">Start Game</button>
-      <div id="start-credit">© 2024 Into the Forge Team. All Rights Reserved.</div>
-    </div>
-  </div>
+  <canvas id="game"></canvas>
   <script>
-    // Into the Forge - Main Game Script
-    // All code is embedded here. Expand with modules/classes as needed.
+    // Basic setup
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
 
-    // --- Game State ---
-    let gameRunning = false;
+    // Input
+    const keys = {};
+    window.addEventListener('keydown', e => keys[e.key] = true);
+    window.addEventListener('keyup', e => keys[e.key] = false);
 
-    // --- Start Screen Logic ---
-    document.getElementById('start-btn').onclick = function() {
-      document.getElementById('start-overlay').style.opacity = 0;
-      setTimeout(() => {
-        document.getElementById('start-overlay').style.display = 'none';
-        startGame();
-      }, 350);
+    // Player
+    const player = {
+      x: 0,
+      y: 200,
+      width: 50,
+      height: 50,
+      speed: 5,
+      update() {
+        if (keys['ArrowUp'] || keys['w']) this.y -= this.speed;
+        if (keys['ArrowDown'] || keys['s']) this.y += this.speed;
+        if (keys['ArrowLeft'] || keys['a']) this.x -= this.speed;
+        if (keys['ArrowRight'] || keys['d']) this.x += this.speed;
+        
+        // Keep player in bounds
+        this.x = Math.max(0, Math.min(canvas.width - this.width, this.x));
+        this.y = Math.max(0, Math.min(canvas.height - this.height, this.y));
+      },
+      draw() {
+        ctx.fillStyle = '#0f0';
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+      }
     };
+    function centerPlayer() {
+      player.x = (canvas.width - player.width) / 2;
+    }
+    centerPlayer();
+    window.addEventListener('resize', centerPlayer);
 
-    // --- Game Loop Placeholder ---
-    function startGame() {
-      gameRunning = true;
-      // TODO: Initialize your game objects, player, map, etc.
+    // Background image
+    const bgImg = new window.Image();
+    bgImg.src = 'https://lqy3lriiybxcejon.public.blob.vercel-storage.com/b427564e-0403-40c4-a689-aee7abf249cd/Tundra_1-NMGfZAcMDcXSZE7EXjxV772HCBjmyn.png?I5ga';
+
+    // --- Grid and Collision Editor ---
+    const GRID_SIZE = 50;
+    let showGrid = true;
+    let collisionGrid = {};
+
+    // Toggle grid with 'g'
+    window.addEventListener('keydown', e => {
+      if (e.key.toLowerCase() === 'g') showGrid = !showGrid;
+    });
+
+    // Click to toggle collision
+    canvas.addEventListener('click', e => {
+      if (!showGrid) return;
+      const rect = canvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const gx = Math.floor(mx / GRID_SIZE);
+      const gy = Math.floor(my / GRID_SIZE);
+      const key = gx + ',' + gy;
+      collisionGrid[key] = !collisionGrid[key];
+    });
+
+    // Export button
+    const exportBtn = document.createElement('button');
+    exportBtn.textContent = 'Export Collision Map';
+    exportBtn.style.position = 'absolute';
+    exportBtn.style.top = '10px';
+    exportBtn.style.right = '10px';
+    exportBtn.style.zIndex = 10;
+    exportBtn.onclick = () => {
+      const arr = Object.entries(collisionGrid)
+        .filter(([k, v]) => v)
+        .map(([k]) => k.split(',').map(Number));
+      navigator.clipboard.writeText(JSON.stringify(arr));
+      exportBtn.textContent = 'Copied!';
+      setTimeout(() => exportBtn.textContent = 'Export Collision Map', 1000);
+    };
+    document.body.appendChild(exportBtn);
+
+    // --- Modified render to show grid and collision ---
+    function gameLoop() {
+      // Draw background
+      if (bgImg.complete && bgImg.naturalWidth > 0) {
+        ctx.drawImage(bgImg, 0, 0, canvas.width, canvas.height);
+      } else {
+        ctx.fillStyle = '#222';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+      }
+      // Draw grid
+      if (showGrid) {
+        ctx.save();
+        ctx.globalAlpha = 0.3;
+        ctx.strokeStyle = '#0ff';
+        for (let x = 0; x < canvas.width; x += GRID_SIZE) {
+          ctx.beginPath();
+          ctx.moveTo(x, 0);
+          ctx.lineTo(x, canvas.height);
+          ctx.stroke();
+        }
+        for (let y = 0; y < canvas.height; y += GRID_SIZE) {
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(canvas.width, y);
+          ctx.stroke();
+        }
+        // Draw collision squares
+        ctx.globalAlpha = 0.5;
+        ctx.fillStyle = '#f0f';
+        for (const key in collisionGrid) {
+          if (collisionGrid[key]) {
+            const [gx, gy] = key.split(',').map(Number);
+            ctx.fillRect(gx * GRID_SIZE, gy * GRID_SIZE, GRID_SIZE, GRID_SIZE);
+          }
+        }
+        ctx.restore();
+      }
+      // Update
+      player.update();
+      // Draw
+      player.draw();
+      // Next frame
       requestAnimationFrame(gameLoop);
     }
 
-    function gameLoop(ts) {
-      if (!gameRunning) return;
-      // TODO: Update game state, handle input, collisions, etc.
-      renderGame();
-      requestAnimationFrame(gameLoop);
-    }
-
-    function renderGame() {
-      const canvas = document.getElementById('game-canvas');
-      const ctx = canvas.getContext('2d');
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      // TODO: Draw your game scene here
-      ctx.fillStyle = '#ffb347';
-      ctx.font = '2em Orbitron, Arial, sans-serif';
-      ctx.fillText('Welcome to Into the Forge!', 60, 120);
-    }
-
-    // --- Add your own modules/classes below ---
-    // Example:
-    // class Player { ... }
-    // class Map { ... }
-    // ...
-
+    // Start
+    gameLoop();
   </script>
 </body>
 </html> 
