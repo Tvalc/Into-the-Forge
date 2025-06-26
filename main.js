@@ -1,1 +1,1 @@
-/* Game styles */
+// Welcome to Snib AI Game Studio
