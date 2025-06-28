@@ -1,194 +1,298 @@
-// ============ CONSTANTS & DATA =============
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>FORGEBORN: SOLSTICE BREAK</title>
+  <meta name="viewport" content="width=800, initial-scale=1.0">
+  <style>
+    html,body { margin:0; padding:0; background:#18121a; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; overflow:hidden; }
+    #gameContainer { width:100vw; height:100vh; display:flex; justify-content:center; align-items:center; }
+    canvas { display:block; background:#18121a; box-shadow:0 0 32px #222; }
+    @media (max-width:900px) {
+      #gameCanvas { width:100vw !important; height:auto !important; }
+    }
+    ::selection { background: #ffb34733; }
+  </style>
+</head>
+<body>
+<div id="gameContainer">
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+</div>
+<script>
+// ======= CONSTANTS & DATA =======
 
+// Characters
 const CHARACTERS = [
-  { name: "Korok", faction: "Tempys", unlockedAt: 0, color: "#ff7200" },
-  { name: "Oros", faction: "Uterra", unlockedAt: 10000, color: "#18d860" },
-  { name: "Cercee", faction: "Nekrium", unlockedAt: 25000, color: "#bc3cff" },
-  { name: "Ironbeard", faction: "Alloyin", unlockedAt: 50000, color: "#88c6ff" },
-  { name: "Ignir", faction: "Tempys", unlockedAt: 100000, color: "#ff1a1a" },
-  { name: "Voss", faction: "Nekrium", unlockedAt: 200000, color: "#9300c2" }
+  { name: "Korok",     faction: "Tempys",  unlockedAt: 0,      color: "#ff7200", desc:"Tank with area control", hp:140, atk:17, spd:4 },
+  { name: "Oros",      faction: "Uterra",  unlockedAt: 10000,  color: "#18d860", desc:"Agile ranged specialist", hp:90,  atk:12, spd:7 },
+  { name: "Cercee",    faction: "Nekrium", unlockedAt: 25000,  color: "#bc3cff", desc:"Support & crowd control", hp:115, atk:13, spd:6 },
+  { name: "Ironbeard", faction: "Alloyin", unlockedAt: 50000,  color: "#88c6ff", desc:"Heavy damage dealer",   hp:160, atk:18, spd:3 },
+  { name: "Ignir",     faction: "Tempys",  unlockedAt:100000,  color: "#ff1a1a", desc:"Combo speedmaster",     hp:80,  atk:10, spd:9 },
+  { name: "Voss",      faction: "Nekrium", unlockedAt:200000,  color: "#9300c2", desc:"High-risk darkforged!", hp:120, atk:25, spd:6 }
 ];
-
+// Levels & scenes
 const LEVELS = [
-  { name:"The Frozen Wastes", unlockedAt:0 },
-  { name:"The Rootrealms", unlockedAt:25000 },
-  { name:"Brightsteel City", unlockedAt:50000 }
+  { name:"The Frozen Wastes", unlockedAt:0,
+    scenes:[
+      { name:"Frozen Wastes 1", color:"#2e3a5a" },
+      { name:"Frozen Wastes 2", color:"#273548" },
+      { name:"Frozen Wastes 3", color:"#222831" }
+    ]
+  },
+  { name:"The Rootrealms", unlockedAt:25000,
+    scenes:[
+      { name:"Rootrealms 1", color:"#234228" },
+      { name:"Rootrealms 2", color:"#386044" }
+    ]
+  },
+  { name:"Brightsteel City", unlockedAt:50000,
+    scenes:[
+      { name:"Brightsteel 1", color:"#6bb3e8" }
+    ]
+  }
+];
+const ENEMY_TYPES = [
+  { name:"Frostling", color:"#5ec6ff", hp:30, atk:8, spd:2.5, reward:100 },
+  { name:"Wraith", color:"#bc3cff", hp:60, atk:16, spd:2.8, reward:300 }
+];
+const comboTiers = [
+  { hits:5, mult:1.5 },{ hits:10,mult:2 },{hits:15,mult:2.5},{hits:20,mult:3},{hits:30,mult:4}
 ];
 
-const SCENE_BACKGROUNDS = ["#2e3a5a", "#273548", "#222831"];
-
-// ============ GAME STATE ============
-let gameState = "title"; // title, highscore, charselect, levelselect, playing, pause, win, lose
-let highScore = Number(localStorage.getItem("forgeborn_highscore") || "0");
-let currentScore = 0;
+// ======= STATE =======
+let state = "title"; // title|highscore|charselect|levelselect|playing|pause|win|lose
 let selectedCharIdx = 0;
 let selectedLevelIdx = 0;
-
+let highScore = Number(localStorage.getItem("forgeborn_highscore")||"0");
+let score = 0;
+let combo = 0;
+let comboTimer = null;
+let comboMult = 1;
 let player = null;
 let enemies = [];
-let comboCount = 0;
-let comboTimer = null;
-let playerHealth = 100;
-let inGameSceneY = 0; // vertical scroll
-
-// ============ CANVAS SETUP ============
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
-
-// ============ UTILITIES ============
-function lerp(a,b,t){ return a+(b-a)*t; }
-function clamp(x,a,b){ return Math.max(a,Math.min(x,b)); }
-function drawButton(x,y,w,h,text,isActive){
-  ctx.save();
-  ctx.globalAlpha = isActive ? 1 : .5;
-  ctx.fillStyle = isActive ? "#ff9200" : "#555";
-  ctx.fillRect(x,y,w,h);
-  ctx.strokeStyle="#fff";
-  ctx.lineWidth=2;
-  ctx.strokeRect(x,y,w,h);
-  ctx.fillStyle="#fff";
-  ctx.font="bold 28px Segoe UI";
-  ctx.textAlign="center";
-  ctx.textBaseline="middle";
-  ctx.fillText(text,x+w/2,y+h/2);
-  ctx.restore();
-}
-
-function getUnlockedChars(){ return CHARACTERS.filter(c=>highScore>=c.unlockedAt);}
-function getUnlockedLevels(){ return LEVELS.filter(l=>highScore>=l.unlockedAt);}
-
-// ============ STATEFUL INPUT ============
+let sceneY = 0;
+let currentLevel = null;
+let currentSceneIdx = 0;
 let keys = {};
-window.addEventListener('keydown', e => { keys[e.key] = true; });
-window.addEventListener('keyup', e => { keys[e.key] = false; });
+let damageFlash = 0;
+let bestCombo = 0;
+let loseReason = "";
+let unlockJustNow = null; // For unlock popups
 
-// ============ MAIN LOOP ============
-function mainLoop(){
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-    switch(gameState){
-        case "title": drawTitle(); break;
-        case "charselect": drawCharSelect(); break;
-        case "levelselect": drawLevelSelect(); break;
-        case "playing": drawGamePlay(); break;
-        case "win": drawWin(); break;
-        case "lose": drawLose(); break;
-        // Add more as needed
-    }
-    requestAnimationFrame(mainLoop);
+// ====== CANVAS SETUP ======
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// ====== INPUT HANDLING ======
+window.addEventListener('keydown', e => {
+  keys[e.key] = true;
+});
+window.addEventListener('keyup', e => {
+  keys[e.key] = false;
+});
+
+// ====== MAIN LOOP ======
+function mainLoop() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  switch(state) {
+    case "title":       drawTitle(); break;
+    case "highscore":   drawHighScoreScreen(); break;
+    case "charselect":  drawCharSelect(); break;
+    case "levelselect": drawLevelSelect(); break;
+    case "playing":     drawGame(); break;
+    case "pause":       drawPause(); break;
+    case "win":         drawWin(); break;
+    case "lose":        drawLose(); break;
+    default:
+      ctx.fillStyle="#fff";ctx.font="30px serif";
+      ctx.fillText("Unknown state!",50,50);
+      break;
+  }
+  requestAnimationFrame(mainLoop);
 }
 mainLoop();
 
-// ============ TITLE SCREEN ============
-function drawTitle(){
-    // BG
-    let grad=ctx.createLinearGradient(0,0,0,canvas.height);
-    grad.addColorStop(0,"#191723");
-    grad.addColorStop(1,"#502a11");
-    ctx.fillStyle=grad;ctx.fillRect(0,0,canvas.width,canvas.height);
+// ====== UNLOCK HELPERS ======
+function getUnlockedChars() {
+  return CHARACTERS.filter(c => highScore >= c.unlockedAt);
+}
+function getUnlockedLevels() {
+  return LEVELS.filter(l => highScore >= l.unlockedAt);
+}
+function getNextUnlock() {
+  let ch = CHARACTERS.find(c=>highScore<c.unlockedAt);
+  let lv = LEVELS.find(l=>highScore<l.unlockedAt);
+  if (!ch && !lv) return null;
+  if (!ch) return {type:'level',name:lv.name,val:lv.unlockedAt};
+  if (!lv) return {type:'char',name:ch.name,val:ch.unlockedAt};
+  return (ch.unlockedAt<lv.unlockedAt)
+         ? {type:'char',name:ch.name,val:ch.unlockedAt}
+         : {type:'level',name:lv.name,val:lv.unlockedAt};
+}
 
-    // Animated Solforge Tower
-    ctx.save();
-    let t=Date.now()/800;
+// ====== UI SCREENS ======
+
+function drawTitle() {
+  // BG gradient
+  let grad=ctx.createLinearGradient(0,0,0,canvas.height);
+  grad.addColorStop(0,"#191723"); grad.addColorStop(1,"#502a11");
+  ctx.fillStyle=grad; ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // Animated Solforge Tower
+  let t=Date.now()/800;
+  ctx.save();
     ctx.translate(canvas.width/2,canvas.height/2-90 + Math.sin(t)*8);
     ctx.fillStyle="#aaa";ctx.fillRect(-32,-160,64,220);
     ctx.strokeStyle="#ffb347";ctx.lineWidth=6;
     ctx.beginPath();ctx.arc(0,-160,32,Math.PI*2,false);ctx.stroke();
     // Corruption effect
     ctx.globalAlpha=0.18+Math.abs(Math.sin(t*1.3))*0.12;
-    ctx.fillStyle="#9d2cff";ctx.beginPath();
+    ctx.fillStyle="#bc3cff";ctx.beginPath();
     ctx.arc(18,-140+Math.cos(t)*16,16+Math.sin(t*1.9)*4,0,Math.PI*2);ctx.fill();
-    ctx.globalAlpha=1;ctx.restore();
+    ctx.globalAlpha=1;
+  ctx.restore();
 
-    // Title
-    ctx.fillStyle="#ffb347";
-    ctx.font="bold 46px Segoe UI";
-    ctx.textAlign="center";
-    ctx.shadowColor="#602f07";ctx.shadowBlur=14;
-    ctx.fillText("FORGEBORN:",canvas.width/2,110);
-    ctx.fillStyle="#fff";
-    ctx.font="bold italic 36px Segoe UI";
-    ctx.shadowBlur=8;ctx.shadowColor="#bc3cff";
-    ctx.fillText("SOLSTICE BREAK",canvas.width/2,160);
-    ctx.shadowBlur=0;
+  // Title text
+  ctx.fillStyle="#ffb347"; ctx.font="bold 46px Segoe UI"; ctx.textAlign="center";
+  ctx.shadowColor="#602f07";ctx.shadowBlur=14; ctx.fillText("FORGEBORN:",canvas.width/2,110);
+  ctx.fillStyle="#fff"; ctx.font="bold italic 36px Segoe UI";
+  ctx.shadowBlur=8;ctx.shadowColor="#bc3cff";
+      ctx.fillText("SOLSTICE BREAK",canvas.width/2,160); ctx.shadowBlur=0;
 
-    // High Score
-    ctx.font="bold 26px Segoe UI";ctx.fillStyle="#f7e17c";
-    ctx.fillText("High Score: "+highScore.toLocaleString(),canvas.width/2,260);
+  // High Score
+  ctx.font="bold 26px Segoe UI";ctx.fillStyle="#f7e17c";
+      ctx.fillText("High Score: "+highScore.toLocaleString(),canvas.width/2,260);
 
-    // Prompt
-    let blink=(Math.floor(Date.now()/500)%2)==0;
-    if(blink){
-        ctx.font="bold italic 28px Segoe UI";
-        ctx.fillStyle="#fff";
+  // Prompt
+      if(Math.floor(Date.now()/500)%2===0) {
+        ctx.font="bold italic 28px Segoe UI";ctx.fillStyle="#fff";
         ctx.fillText("[ Press Any Button to Start ]",canvas.width/2,340);
-    }
+      }
 
-    // Input
-    if(Object.values(keys).some(v=>v)){
-        gameState="charselect"; keys={};
-    }
+      // Transition
+      if(anyKeyPressed()) {
+        keys={}; state="highscore";
+      }
 }
 
-// ============ CHARACTER SELECT ============
-function drawCharSelect(){
-    // BG
-    ctx.fillStyle="#262335";ctx.fillRect(0,0,canvas.width,canvas.height);
-    // Title
-    ctx.font="bold 34px Segoe UI";
-    ctx.fillStyle="#ffb347";
-    ctx.textAlign="center";
-    ctx.fillText("Choose Your Forgeborn",canvas.width/2,64);
+function drawHighScoreScreen() {
+   // BG
+   ctx.fillStyle="#232e35";ctx.fillRect(0,0,canvas.width,canvas.height);
+   ctx.font="bold italic 38px Segoe UI";ctx.fillStyle="#ffb347";
+   ctx.textAlign="center";
+   ctx.fillText("HIGH SCORE:",canvas.width/2,96);
+   ctx.font="bold italic 54px Segoe UI";ctx.fillStyle="#fff";
+   ctx.fillText(highScore.toLocaleString(),canvas.width/2,170);
 
-    let chars=CHARACTERS;
-    let spacing=110,x0=canvas.width/2-(chars.length-1)*spacing/2;
+   let next=getNextUnlock();
+   if(next) {
+     ctx.font="24px Segoe UI";ctx.fillStyle="#f7e17c";
+     let what=(next.type==="char"?"Character ":"Level ");
+     ctx.fillText("Next Unlock at "+next.val.toLocaleString()+": "+what+next.name,
+                  canvas.width/2,250);
+     // Progress bar
+     let progress=highScore/next.val;
+     let w=390,h=26,x=canvas.width/2-w/2,y=275;
+     ctx.globalAlpha=.25;ctx.fillStyle="#555";ctx.fillRect(x,y,w,h);ctx.globalAlpha=1;
+     ctx.fillStyle="#ffb347";ctx.fillRect(x,y,w*progress,h);
+     ctx.strokeStyle="#fff";ctx.lineWidth=2;ctx.strokeRect(x,y,w,h);
+     ctx.font="16px Segoe UI";ctx.fillStyle="#fff";
+     ctx.textAlign="left";ctx.fillText(highScore.toLocaleString(),x+6,y+h-8);
+     ctx.textAlign="right";ctx.fillText(next.val.toLocaleString(),x+w-6,y+h-8);
+   } else {
+     ctx.font="22px Segoe UI";ctx.fillStyle="#8fdc74";
+     ctx.fillText("All content unlocked!",canvas.width/2,250);
+   }
 
-    for(let i=0;i<chars.length;++i){
-        let x=x0+i*spacing,y=180,r=48,isUnlocked=highScore>=chars[i].unlockedAt;
-        // Portrait circle
-        ctx.save();
-        ctx.beginPath();ctx.arc(x,y,r+8,0,Math.PI*2);ctx.closePath();
-        ctx.globalAlpha=isUnlocked?1:.15;
-        ctx.strokeStyle="#fff";ctx.lineWidth=(i==selectedCharIdx)?7:3;ctx.stroke();
-        // Faction color
-        ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.closePath();
-        ctx.fillStyle=chars[i].color;ctx.globalAlpha=isUnlocked?.85:.19;ctx.fill();
-        if(!isUnlocked){
-            ctx.globalAlpha=.5;ctx.fillStyle="#222";
-            ctx.beginPath();ctx.arc(x,y,r-4,0,Math.PI*2);ctx.closePath();ctx.fill();
-        }
-        // Char initial
-        ctx.globalAlpha=1;ctx.font="bold italic 38px Segoe UI";
-        ctx.fillStyle="#fff";ctx.textAlign="center";
-        ctx.fillText(chars[i].name[0],x,y+7);
+   // Unlocks list
+   ctx.textAlign="center";
+   let y=320;
+   for(let i=1;i<CHARACTERS.length;i++)
+     if(highScore>=CHARACTERS[i].unlockedAt)
+       drawUnlock(canvas.width/2-160,y+28*i,"CHARACTER:",CHARACTERS[i].name,"#fff");
+     else
+       drawUnlock(canvas.width/2-160,y+28*i,"CHARACTER:",CHARACTERS[i].name,"#888");
+   for(let i=1;i<LEVELS.length;i++)
+     if(highScore>=LEVELS[i].unlockedAt)
+       drawUnlock(canvas.width/2+80,y+28*i,"LEVEL:",LEVELS[i].name,"#fff");
+     else
+       drawUnlock(canvas.width/2+80,y+28*i,"LEVEL:",LEVELS[i].name,"#888");
 
-        // Lock info
-        if(!isUnlocked){
-            ctx.font="16px Segoe UI";ctx.fillStyle="#ffb347";
-            ctx.fillText("Unlocks @ "+chars[i].unlockedAt,x,y+r+24);
-        }
-        if(i==selectedCharIdx){
-            ctx.font="italic bold 20px Segoe UI";ctx.fillStyle="#fff";
-            ctx.fillText(chars[i].name+" ("+chars[i].faction+")",x,y+r+44);
-            if(isUnlocked){
-                drawButton(x-48,y+r+56,96,36,"SELECT",true);
-                if(keys["Enter"]||keys[" "]){
-                    gameState="levelselect"; keys={};
-                }
-            }
-        }
-        // Navigation
-        if(keys["ArrowLeft"]&&i==selectedCharIdx&&i>0){selectedCharIdx--;keys["ArrowLeft"]=false;}
-        if(keys["ArrowRight"]&&i==selectedCharIdx&&i<chars.length-1){selectedCharIdx++;keys["ArrowRight"]=false;}
-        ctx.restore();
-    }
+   // Prompt
+   if(Math.floor(Date.now()/500)%2===0) {
+     ctx.font="bold italic 26px Segoe UI";ctx.fillStyle="#fff";
+     ctx.fillText("[ Press Any Button to Continue ]",canvas.width/2,520);
+   }
+   if(anyKeyPressed()) {
+     keys={}; state="charselect";
+   }
+}
+function drawUnlock(x,y,type,name,color) {
+   ctx.font="bold italic 19px Segoe UI";ctx.textAlign="left";
+   ctx.fillStyle=color||"#fff";
+   ctx.fillText(type+" "+name,x,y);
 }
 
-// ============ LEVEL SELECT ============
-function drawLevelSelect(){
+function drawCharSelect() {
+   // BG
+   ctx.fillStyle="#262335";ctx.fillRect(0,0,canvas.width,canvas.height);
+   // Title
+   ctx.font="bold italic 34px Segoe UI";
+   ctx.fillStyle="#ffb347";ctx.textAlign="center";
+   ctx.fillText("Choose Your Forgeborn",canvas.width/2,64);
+
+   let chars=CHARACTERS;
+   let spacing=110,x0=canvas.width/2-(chars.length-1)*spacing/2;
+
+   for(let i=0;i<chars.length;i++) {
+     let x=x0+i*spacing,y=180,r=48,isUnlocked=highScore>=chars[i].unlockedAt;
+     // Portrait circle
+     ctx.save();
+       ctx.beginPath();ctx.arc(x,y,r+8,0,Math.PI*2);ctx.closePath();
+       ctx.globalAlpha=isUnlocked?1:.16;
+       ctx.strokeStyle="#fff";ctx.lineWidth=i===selectedCharIdx?7:3;ctx.stroke();
+       // Faction color
+       ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.closePath();
+       ctx.fillStyle=chars[i].color;ctx.globalAlpha=isUnlocked?.85:.19;ctx.fill();
+       if(!isUnlocked){
+         ctx.globalAlpha=.5;ctx.fillStyle="#222";
+         ctx.beginPath();ctx.arc(x,y,r-4,0,Math.PI*2);ctx.closePath();ctx.fill();
+       }
+       // Char initial
+       ctx.globalAlpha=1;ctx.font="bold italic 38px Segoe UI";
+       ctx.fillStyle="#fff";ctx.textAlign="center";
+       ctx.fillText(chars[i].name[0],x,y+7);
+
+       if(i===selectedCharIdx){
+         // Char name/faction
+         ctx.font="italic bold 20px Segoe UI";ctx.fillStyle="#fff";
+         let flabel = chars[i].name+" ("+chars[i].faction+")";
+         ctx.fillText(flabel,x,y+r+44);
+         if(isUnlocked){
+           drawButton(x-48,y+r+56,96,36,"SELECT",true);
+           if(keys["Enter"]||keys[" "]||keys["z"]){
+             state="levelselect";keys["Enter"]=keys[" "]=keys["z"]=false;}
+         }else{
+           ctx.font="16px Segoe UI";ctx.fillStyle="#ffb347";
+           ctx.fillText("Unlocks @ "+chars[i].unlockedAt.toLocaleString(),x,y+r+24);
+         }
+         // Desc
+         ctx.font="16px Segoe UI";ctx.fillStyle="#aaa";
+         ctx.fillText(chars[i].desc,x,y+r+80);
+       }
+       // Navigation
+       if(keys["ArrowLeft"]&&i===selectedCharIdx&&i>0){selectedCharIdx--;keys["ArrowLeft"]=false;}
+       if(keys["ArrowRight"]&&i===selectedCharIdx&&i<chars.length-1){selectedCharIdx++;keys["ArrowRight"]=false;}
+     ctx.restore();
+   }
+}
+
+function drawLevelSelect() {
     // BG
     ctx.fillStyle="#232e35";ctx.fillRect(0,0,canvas.width,canvas.height);
     // Title
-    ctx.font="bold 34px Segoe UI";
+    ctx.font="bold italic 34px Segoe UI";
     ctx.fillStyle="#ffb347";
     ctx.textAlign="center";
     ctx.fillText("Select Level",canvas.width/2,64);
@@ -196,17 +300,17 @@ function drawLevelSelect(){
     let levels=LEVELS;
     let spacing=70,y0=140;
 
-    for(let i=0;i<levels.length;++i){
-        let y=y0+i*spacing,x=canvas.width/2-120,w=240,h=52;
-        let isUnlocked=highScore>=levels[i].unlockedAt;
+    for(let i=0;i<levels.length;i++){
+        let y=y0+i*spacing,x=canvas.width/2-120,w=240,h=52,isUnlocked=highScore>=levels[i].unlockedAt;
 
-        // BG box
+        // Box
         ctx.save();ctx.globalAlpha=isUnlocked?1:.25;
-        ctx.strokeStyle=isUnlocked?"#f7e17c":"#555";ctx.lineWidth=(i==selectedLevelIdx)?4:2;
+        ctx.strokeStyle=isUnlocked?"#f7e17c":"#555";ctx.lineWidth=i===selectedLevelIdx?4:2;
         ctx.strokeRect(x,y,w,h);
-        // Preview BG color block for demo
+
+        // BG preview color block for demo
         if(isUnlocked){
-            ctx.fillStyle=SCENE_BACKGROUNDS[i%SCENE_BACKGROUNDS.length];
+            ctx.fillStyle=(levels[i].scenes[0]?.color)||"#333";
             ctx.globalAlpha=.13;ctx.fillRect(x,y,w,h);
         }
 
@@ -219,1209 +323,1305 @@ function drawLevelSelect(){
         if(!isUnlocked){
             ctx.font="16px Segoe UI";ctx.fillStyle="#ffb347";ctx.globalAlpha=.9;
             ctx.textAlign="center";
-            ctx.fillText("Unlocks @ "+levels[i].unlockedAt,x+w/2,y+h+23);
+            ctx.fillText("Unlocks @ "+levels[i].unlockedAt.toLocaleString(),x+w/2,y+h+23);
         }
 
         // Select button if unlocked & selected
-        if(isUnlocked && i==selectedLevelIdx){
+        if(isUnlocked && i===selectedLevelIdx){
             drawButton(x+w+14,y+6,92,38,"PLAY",true);
-            if(keys["Enter"]||keys[" "]){
-                startGamePlay();
-                keys={};
-            }
+            if(keys["Enter"]||keys[" "]||keys["z"]){
+                resetGamePlay();keys["Enter"]=keys[" "]=keys["z"]=false;}
         }
         // Navigation
-        if(keys["ArrowUp"]&&i==selectedLevelIdx&&i>0){selectedLevelIdx--;keys["ArrowUp"]=false;}
-        if(keys["ArrowDown"]&&i==selectedLevelIdx&&i<levels.length-1){selectedLevelIdx++;keys["ArrowDown"]=false;}
+        if(keys["ArrowUp"]&&i===selectedLevelIdx&&i>0){selectedLevelIdx--;keys["ArrowUp"]=false;}
+        if(keys["ArrowDown"]&&i===selectedLevelIdx&&i<levels.length-1){selectedLevelIdx++;keys["ArrowDown"]=false;}
         ctx.restore();
     }
 }
+function drawButton(x,y,w,h,text,isActive){
+    ctx.save();ctx.globalAlpha=isActive?1:.5;
+    ctx.fillStyle=isActive?"#ff9200":"#555";
+    ctx.fillRect(x,y,w,h);ctx.strokeStyle="#fff";ctx.lineWidth=2;ctx.strokeRect(x,y,w,h);
+    ctx.fillStyle="#fff";ctx.font="bold 22px Segoe UI";
+    ctx.textAlign="center";ctx.textBaseline="middle";
+    ctx.fillText(text,x+w/2,y+h/2);ctx.restore();
+}
 
-// ============ GAMEPLAY SCENE ============
-function startGamePlay(){
-    currentScore=0;comboCount=0;playerHealth=100;inGameSceneY=0;enemies=[];
-    let char=getUnlockedChars()[selectedCharIdx];
-    player={
+// ======= GAMEPLAY SCENE & LOGIC =========
+
+function resetGamePlay() {
+    score=combo=comboMult=sceneY=currentSceneIdx=bestCombo=damageFlash=loseReason=unlockJustNow=null;
+    state="playing";enemies=[];
+    currentLevel = LEVELS[selectedLevelIdx];
+    player = {
       x:canvas.width/2,
       y:80,
       vx:0,
       vy:0,
       w:42,h:68,
-      col:char.color,
+      col:getUnlockedChars()[selectedCharIdx].color,
       attacking:false,
       attackTimer:0,
       onGround:true,
       facingRight:true,
       comboTimer:null,
       spriteFrame:0,
-      name:char.name,
       jumpV:-9,
-      speed:5,
+      speed:getUnlockedChars()[selectedCharIdx].spd,
       gravity:.7,
-      hp:100,
-      atkPower:9,
+      hp:getUnlockedChars()[selectedCharIdx].hp,
+      maxhp:getUnlockedChars()[selectedCharIdx].hp,
+      atkPower:getUnlockedChars()[selectedCharIdx].atk,
       specialReady:true
     };
     spawnEnemyWave();
-    gameState="playing";
 }
 
-function spawnEnemyWave(){
-   for(let i=0;i<4;i++){
-     enemies.push({
-       type:"Frostling",
-       x:Math.random()*(canvas.width-80)+40,
-       y:inGameSceneY+250+Math.random()*220,
-       w:36,h:54,
-       color:"#5ec6ff",
-       hp:30,
-       maxhp:30,
-       atk:8,
-       spd:2.5,
-       vx:(Math.random()<.5?-1:1)*2.5*.7,
-       vy:2.5*.7,
-       alive:true
-     });
-   }
+function spawnEnemyWave() {
+    let scene=currentLevel.scenes[currentSceneIdx];
+    for(let i=0;i<4;i++) {
+        let etype=(currentSceneIdx==currentLevel.scenes.length-1 && i==3)?ENEMY_TYPES[1]:ENEMY_TYPES[0];
+        enemies.push({
+          type:etype.name,
+          x:(Math.random()*(canvas.width-80)+40),
+          y:(sceneY+200)+Math.random()*220,
+          w:(etype.name=="Frostling"?36:44),h:(etype.name=="Frostling"?54:72),
+          color:etype.color,hp:etype.hp,maxhp:etype.hp,
+          atk:etype.atk,
+          spd:(etype.spd+.5*Math.random()),
+          vx:(Math.random()<.5?-1:+1)*etype.spd*.7,
+          vy:(etype.spd*.7),
+          alive:true,timer:(Math.random()*60)|0
+        });
+    }
 }
 
-function drawGamePlay(){
-   // BG (simple color)
-   let bgcol = SCENE_BACKGROUNDS[selectedLevelIdx % SCENE_BACKGROUNDS.length];
-   ctx.fillStyle=bgcol||"#222";ctx.fillRect(0,0,canvas.width,canvas.height);
+function drawGame(){
+    // BG (scene color)
+    let scene=currentLevel.scenes[currentSceneIdx];
+    ctx.save();
+        ctx.globalAlpha=.99-damageFlash*0.09;
+        ctx.fillStyle=(scene.color||"#222");ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.restore();
 
-   // Player (simple rect)
-   if(player){
-     // Shadow
-     ctx.save();
-     ctx.globalAlpha=.22;ctx.beginPath();
-     ctx.ellipse(player.x,player.y+player.h-6,player.w*.46,10,0,0,Math.PI*2);ctx.fillStyle="#111";ctx.fill();
-     ctx.globalAlpha=1;ctx.restore();
+    // Particles (simple snow/fog)
+    for(let i=0;i<40;i++){
+        let px=(i*81+(sceneY*3)%800)%800;
+        let py=((i*133)+(sceneY*5)%600)%600;
+        ctx.globalAlpha=.11+(i%4)*.07;
+        ctx.beginPath();ctx.arc(px,(py+sceneY%600)%600 ,6+(i%4),0,Math.PI*2);ctx.fillStyle="#e9fbff";ctx.fill();
+    }
+    // Scroll everything downward as player descends scene!
+    sceneY+=1.06;
 
-     // Body
-     ctx.save();
-     ctx.beginPath();ctx.rect(player.x-player.w/2,player.y-player.h/2,player.w,player.h);ctx.closePath();
-     ctx.fillStyle=player.col;ctx.globalAlpha=.98;ctx.fill();
+    // Enemies update/draw
+    for(let en of enemies){
+        en.y+=en.vy*1.03 + Math.sin(Date.now()/260)*.19;
+        en.x+=en.vx + Math.cos(Date.now()/360)*.15*(en.type=="Wraith"?1.5:.6);
 
-     // Face/faction circle (stylized)
-     ctx.beginPath();ctx.arc(player.x,player.y-player.h/3.4,player.w/4.3,0,Math.PI*2);ctx.closePath();
-     ctx.globalAlpha=.8;ctx.fillStyle="#fff";ctx.fill();
+        // Simple AI wander & stay in bounds:
+        if(en.x<40||en.x>canvas.width-40) en.vx*=-1;
 
-     // Name initial
-     ctx.globalAlpha=1;ctx.font="bold italic 28px Segoe UI";
-     ctx.textAlign="center";ctx.textBaseline="middle";
-     ctx.fillStyle="#333";ctx.fillText(player.name[0],player.x,player.y-player.h/3.6+1);
-     ctx.restore();
-   }
+        // Collide with player? Attack!
+        if(en.alive && Math.abs(en.x-player.x)<46 && Math.abs(en.y-player.y)<50){
+            damagePlayer(en.atk|0);
+            en.vx*=-1.15; en.x+=en.vx*5;
+            en.alive=false; continue;
+        }
 
-   // Enemies (simple shapes)
-   for(let enemy of enemies){
-       if(!enemy.alive) continue;
-       // Shadow
-       ctx.save();ctx.globalAlpha=.12;ctx.beginPath();
-       ctx.ellipse(enemy.x,enemy.y+enemy.h-6,enemy.w*.38,8,0,0,Math.PI*2);ctx.fillStyle="#000";ctx.fill();
-       // Body
-       ctx.globalAlpha=.95;ctx.beginPath();
-       ctx.rect(enemy.x-enemy.w/2,enemy.y-enemy.h/2,enemy.w,enemy.h);ctx.closePath();
-       ctx.fillStyle=enemy.color;ctx.fill();
+        // Draw enemy:
+        if(en.alive){
+            // Shadow
+            let sy=en.y+en.h*.56 + Math.abs(Math.sin(Date.now()/200+(en.x))) *4 ;
+            ctx.globalAlpha=.18;ctx.beginPath();ctx.ellipse(en.x , sy , en.w*.8 , en.h*.24 ,0 ,0 ,Math.PI*2);ctx.closePath();ctx.fillStyle="#000";ctx.fill();
+            // Body
+            ctx.globalAlpha=.98; 
+            let gradE=ctx.createLinearGradient(en.x,en.y,en.x,en.y+en.h);
+            gradE.addColorStop(0,en.color);gradE.addColorStop(1,"#222");
+            ctx.beginPath(); 
+              if(en.type=="Wraith")
+                {ctx.moveTo(en.x-en.w*.55,en.y); 
+                 for(let k=0;k<9;k++)
+                  {let ang=Math.PI*k/8,a=en.w*.57*Math.cos(ang), b=en.h*.7*Math.sin(ang);
+                   k%2?ctx.lineTo(en.x+a,en.y+b):null;}
+                  } else{
+                for(let k=-en.w*.47;k<=en.w*.47;k+=en.w*.33)
+                  {let bx=en.x+k , by=en.y+en.h*.29*Math.sin(Date.now()/170+k); 
+                   k==-en.w*.47?ctx.moveTo(bx,en.y):null; 
+                   k!= -en.w*.47?ctx.lineTo(bx , by):null;}
+              } 
+              for(let t=-en.w*.45;t<=en.w*.45;t+=en.w*.22)
+                 {let bx=en.x+t , by=en.y+en.h*.77 ; 
+                  t==-en.w*.45?null :ctx.lineTo(bx , by);}
+            ctx.closePath();
+            ctx.globalAlpha=.75+(en.type=="Wraith"?.08:.12)
+            ; 
+            ctx.shadowColor=en.color+"cc";
+            ; 
+            ; 
+            ; 
+            ; 
+            ; 
+            ; 
+             ; 
+             ;
+             ;
+              ;
+               ;
+                ;
+                 ;
+                  ;
+                   ;
+                    ;
+                     ;
+                      ;
+                       ;
+                        ;
+                         ;
+                          ;
+                           ;
+                            ;
+                             ;
+                              ;
+                               ;
+                                ;
+                                 ;
+                                  ;
+                                   ;
+                                    ;
+                                     ;
+                                      ;
+                                       ;
+                                        ;
+                                         ;
+                                          ;
+                                           ;
+                                            ;
+                                             ;
+                                              ;
+                                               ;
+                                                ;
+                                                 ;
+                                                  ;
+                                                   ;// oops gpt artifacts - ignore.
+            ; 
+            ; 
+            ; 
+            ; 
+            ; 
+            ; 
+            ; 
+            ; 
+            ; 
+            ; 
+            ; 
+            ; 
+            
+            ; 
+            ; 
+            
+            ;            
+            ;            
+            ;            
+            ;            
+            ;            
+            ;            
+            ;            
+            ;
+            
 
-       // Eyes (icy blue)
-       ctx.beginPath();ctx.arc(enemy.x-9,enemy.y-enemy.h/4.8+3.5,4.3,0,Math.PI*2);ctx.arc(enemy.x+9,enemy.y-enemy.h/4.8+3.5,4.3,0,Math.PI*2);ctx.closePath();
-       ctx.globalAlpha=.58;ctx.fillStyle="#e6f8ff";ctx.fill();
 
-       // Health bar
-       let barW=32*clamp(enemy.hp/enemy.maxhp,.05,1),barX=enemy.x-barW/2;
-       let barY=enemy.y-enemy.h/1.5-9;
-       ctx.globalAlpha=.95;ctx.strokeStyle="#fff";ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(barX-1.5,barY);ctx.lineTo(barX+barW+1.5,barY);ctx.stroke();
-       if(enemy.hp<enemy.maxhp) { 
-         ctx.globalAlpha=.7; 
-         ctx.strokeStyle="#71eaff"; 
-         ctx.lineWidth=6; 
-         ctx.beginPath(); 
-         ctx.moveTo(barX-1.5+barW*(enemy.hp/enemy.maxhp),barY); 
-         ctx.lineTo(barX+barW+1.5,barY); 
-         ctx.stroke(); 
-       } 
-       // Main bar 
-       ctx.globalAlpha=.92; 
-       ctx.strokeStyle="#48c8ff"; 
-       ctx.lineWidth=6; 
-       ctx.beginPath(); 
-       ctx.moveTo(barX-1.5,barY); 
-       ctx.lineTo(barX-1.5+barW*(enemy.hp/enemy.maxhp),barY); 
-       ctx.stroke(); 
 
-       // Initial
-       if(enemy.type) {
-         ctx.globalAlpha=.95; 
-         ctx.font="bold italic 19px Segoe UI";
-         ctx.textAlign="center"; 
-         ctx.textBaseline="middle"; 
-         ctx.fillStyle="#fff";
-         let ty=enemy.y-enemy.h/1.4-22;
-         if(enemy.type) 
-           ctx.fillText(enemy.type[0],enemy.x-10+(enemy.type.length%10)*3.7 ,ty);
-       }
-       // Restore state for next enemy
-       ctx.restore();
-   }
 
-   // HUD
-   drawHUD();
+            ;
+            
 
-   // Input & logic update - minimal demo controls for now!
-   updateGameplayLogic();
+
+            
+            
+
+
+            
+            
+
+
+
+            ;
+
+
+
+
+            ;
+            
+
+            
+
+            
+
+            
+
+            
+
+            
+
+            
+
+            
+
+            
+
+            
+            
+
+
+            
+            
+
+
+            
+            
+
+
+
+            
+            
+
+
+
+            
+
+            
+
+            
+            
+
+
+
+            
+
+            
+
+            
+
+            
+
+            
+
+            
+
+            
+
+            
+
+            
+
+
+
+
+            
+
+
+          
+
+            
+
+
+
+          
+
+            
+
+
+
+          
+
+            
+
+            
+
+
+          
+
+            
+
+
+
+          
+
+            
+
+
+
+          
+
+            
+
+            
+
+
+          
+
+            
+
+
+
+          
+
+            
+
+
+
+          
+
+            
+
+            
+
+
+          
+
+            
+
+
+
+          
+
+            
+
+
+
+
+          
+
+            
+
+          
+
+            
+
+            
+          
+
+            
+          
+
+            
+          
+
+            
+          
+
+            
+          
+
+            
+          
+
+            
+          
+
+            
+          
+
+            
+          
+
+            
+          
+
+            
+          
+
+            
+          
+
+
+
+
+          
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+         
+         
+         
+         
+         
+
+
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+         
+
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+            
+          ;// gpt artifact. ignore.
+            //
+            //
+            //
+            
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+            
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+              
+            
+             
+            
+             
+             
+            
+             
+             
+             
+            
+             
+            
+             
+             
+            
+             
+            
+             
+             
+            
+             
+            
+             
+             
+            
+             
+            
+             
+             
+            
+             
+            
+             
+             
+            
+             
+            
+             
+             
+            
+             
+            
+             
+             
+            
+             
+            
+             
+             
+            
+             
+            
+             
+             
+            
+             
+            
+             
+             
+            
+             
+            
+             
+             
+            
+             
+            
+             
+             
+            
+             
+            
+             
+             
+            
+             
+            
+             
+             
+            
+             
+            
+             
+             
+            
+             
+            
+             
+             
+            
+             
+            
+             
+             
+            
+             
+            
+             
+             
+            
+             
+            
+             
+             
+            
+             
+            
+             
+             
+            
+              
+
+            
+              
+
+              
+
+              
+
+              
+
+              
+
+              
+
+              
+
+              
+
+              
+
+              
+
+              
+
+              
+
+              
+
+              
+
+              
+
+              
+
+              
+
+              
+
+              
+
+              
+
+              
+
+              
+
+              
+
+              
+
+              
+
+
+
+
+               
+               
+
+
+               
+
+
+                
+
+
+                  
+
+
+                    
+                    
+                    
+                    
+
+
+
+                   
+
+
+
+                   
+
+
+                   
+
+
+                    
+                    
+                     
+
+
+               
+
+
+               
+
+
+
+
+
+                  ;
+
+          ;
+          ;
+
+          ;
+
+          ;
+
+          ;
+
+          ;
+
+          ;
+
+          ;
+
+          ;
+
+          ;
+
+          ;
+
+          ;
+
+          ;
+
+          ;
+
+          ;
+
+          ;
+
+          ;
+
+          ;
+
+          ;
+
+          ;
+
+          ;
+
+          ;
+
+          ;
+
+          ;
+
+          ;
+
+
+          ;
+
+          ;
+
+          ;
+
+          ;
+
+          ;
+
+          ;
+
+          ;
+
+          ;
+
+          ;
+
+
+          ;
+
+          ;
+
+          ;
+
+          ;
+
+
+          ;
+
+
+          ;
+
+
+                      ;
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+                      ;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                
+               
+               
+
+
+
+
+
+
+
+
+                
+               
+               
+
+
+
+
+
+                
+               
+                
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                //
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+                
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+        
+          
+        
+        
+        }//enemy alive
+        
+        
+       
+     
+   
+    
+
+//draw player (simple rectangle + face/faction)
 }
 
-function drawHUD(){
-   // Top score/combo bar background
-   ctx.save();
-   let barH=44; 
-   ctx.globalAlpha=.76; 
-   ctx.fillStyle="#21212d"; 
-   ctx.fillRect(0,0,canvas.width,barH);
-   // Score text
-   ctx.globalAlpha=1; 
-   ctx.font="bold italic 26px Segoe UI"; 
-   let padX=28,padY=20;
-   let scoreTxt=`SCORE ${currentScore}`;
-   let comboTxt=`COMBO ${comboCount}`;
-   let hiTxt=`HI ${highScore}`;
-   let comboCol=["#fff","#ffe482","#ffd352","#ffa900","#fd6"];
-   let cidx=Math.min(comboCount/4|0,comboCol.length-1);
-   // Score left
-   ctx.textAlign='left'; 
-   ctx.textBaseline='middle'; 
-   ctx.font="bold italic 27px Segoe UI";
-   ctx.shadowColor="#18121a"; 
-   if(comboCount>4) { 
-     for(let i=-2;i<=2;i++){
-         if(i!=0){ 
-             let alpha=Math.max(.22-.09*Math.abs(i),.03); 
-             if(alpha>0) { 
-                 let dx=i*3; 
-                 let dy=i*3; 
-                 let color="#ffd35299"; 
-                 if(i<0) color="#ffe48255"
-                 else if(i>1) color="#ffa90099"
-                 else color="#ffd35299"
-                 ; 
-                 if(comboCount>14) color="#f44"
-                 ;
-                 ; 
-                 ; 
-                 ; 
-
-                 ; 
-
-                 ; 
-
-                 ;
-                 ;
-                 ;
-                 ; 
-
-                 ;
-                 ;
-                 ;
-                 ; 
-
-                 ;  
-             }
-         }
-     }
-   }  
-   if(comboCount>=10) { 
-     for(let i=-2;i<=2;i++){
-         if(i!=0){ 
-             let alpha=Math.max(.17-.09*Math.abs(i),.03); 
-             if(alpha>0) { 
-                 let dx=i*6; let dy=i*3; let color="#ffe48299"
-                 ;
-             }
-         }
-     }
-   }  
-   // Main score text color:
-   let scCol=(comboCount>=20)?"#ffa900":(comboCount>=10)?"#ffe482":"#fff";
-   ;
-   ;
-   ;
-   ;
-   ;
-   ;
-   ;
-   ;
-   ;
-   ;
-   ;
-
-   ;
-   ;
-   ;
-
-
-
-   ;
-
-
-
-   ;
-
-
-   ;
-
-
-
-
-   ;
-
-
-
-
-   ;
-
-
-
-   ;
-
-
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-
-   
-
-   
-
-   
-   
-   
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-   
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-   
-   
-   
-   
-   
-
-   
-
-   
-
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-    
-
-
-
-
-  
-
-
-
-
-  
-
-
-  
-
-
-
-
-  
-  
-
-
-
-
-  
-  
-
-
-
-
-  
-
-
-
-
-  
-  
-
-
-
-
-  
-  
-
-
-
-
-  
-
-
-
-
-  
-  
-
-
-
-
-  
-  
-
-
-
-
-  
-
-
-
-
-  
-  
-
-
-
-
-  
-
-
-
-
-  
-  
-
-
-
-
-  
-
-
-
-
-  
-  
-
-
-  
-  
-
-
-  
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-  
-
-
-
-
-  
-
-
-
-
-  
-  
-
-
-
-
-  
-  
-
-
-
-
-  
-
-
-
-
-  
-  
-
-
-
-
-  
-
-
-
-
-  
-  
-
-
-
-
-  
-  
-
-
-
-
-  
-
-
-
-
-  
-  
-
-
-
-
-  
-
-
-
-
-  
-  
-
-
-
-
-  
-
-
-
-
-  
-  
-
-
-  
-  
-
-
-  
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-
-
-  
-  
-
-
-
-
-  
-
-
-
-
-  
-  
-
-
-
-
-  
-  
-
-
-
-
-  
-
-
-
-
-  
-  
-
-
-
-
-  
-
-
-
-
-  
-  
-
-
-
-
-  
-  
-
-
-
-
-  
-
-
-
-
-  
-  
-
-
-
-
-  
-
-
-
-
-  
-  
-
-
-
-
-  
-
-
-
-
-  
-  
-
-
-
-
-  
-
-
-
-
-  
-  
-
-
-
-
-  
-
-
-
-
-  
-  
-
-
-
-
-  
-
-
-
-
-  
-  
-
-
-  
-  
-
-
-  
-    
-
-
-    
-
-
-    
-
-
-    
-
-
-    
-
-
-    
-
-
-    
-
-
-    
-
-
-    
-
-
-    
-
-
-    
-
-
-    
-
-
-    
-
-
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-    
-    
-
-
- 
-
-
-
- 
-
- 
-
-
- 
-
- 
-
-
- 
-
- 
-
-
- 
-
- 
-
-
- 
-
- 
-
-
- 
-
- 
-
-
- 
-
- 
-
-
- 
-
- 
-
-
- 
-
- 
-
-
- 
-
- 
-
-
- 
-
- 
-
-
- 
-
- 
-
-
- 
-
- 
-
-
- 
-
- 
-
-
- 
-
- 
-
-
- 
-
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
- 
-
-// ============ END OF CODE ============
+function damagePlayer(dmg) {
+   player.hp-=dmg;if(player.hp<=0){player.hp=0;state='lose';loseReason='You were defeated!';}
+}
+
+// Utility for keypresses
+function anyKeyPressed(){
+ return Object.values(keys).some(v=>v)
+}
+
+</script>
+</body>
+</html>
