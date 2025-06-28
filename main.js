@@ -1,1 +1,2 @@
-// Welcome to Snib AI Game Studio
+// Example game logic
+    const state = { ... }
