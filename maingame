@@ -1,28 +1,478 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Generated Game</title>
-    <style>
-        body { margin: 0; padding: 0; background: #000; font-family: Arial, sans-serif; overflow: hidden; }
-        canvas { display: block; margin: 0 auto; }
-        #gameContainer { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
-        
-    </style>
+  <meta charset="UTF-8">
+  <title>FORGEBORN: SOLSTICE BREAK</title>
+  <style>
+    body { margin:0; background: #000; }
+    canvas { display:block; margin:0 auto; background:#18151c; }
+    #gameContainer { width:100vw; height:100vh; display:flex; justify-content:center; align-items:center; }
+  </style>
 </head>
 <body>
-    <div id="gameContainer">
-        <canvas id="gameCanvas" width="800" height="600"></canvas>
-        <div id="game"></div>
-    </div>
-    
-    <script>
-        function gameLoop() {
-  // draw appropriate screen based on gameState
-  requestAnimationFrame(gameLoop);
+<div id="gameContainer">
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+</div>
+<script>
+// ====== GAME DATA & DRAWING FUNCTIONS ======
+// All core constants, variables and UI drawing functions go here
+
+// Characters (simplified for demo, expand as needed)
+const CHARACTERS = [
+  { name: "Korok", faction: "Tempys", unlockedAt: 0, color: "#ff7200" },
+  { name: "Oros", faction: "Uterra", unlockedAt: 10000, color: "#18d860" },
+  { name: "Cercee", faction: "Nekrium", unlockedAt: 25000, color: "#bc3cff" },
+  { name: "Ironbeard", faction: "Alloyin", unlockedAt: 50000, color: "#88c6ff" },
+  { name: "Ignir", faction: "Tempys", unlockedAt: 100000, color: "#ff1a1a" },
+  { name: "Voss", faction: "Nekrium", unlockedAt: 200000, color: "#9300c2" }
+];
+
+// Levels
+const LEVELS = [
+  { name:"The Frozen Wastes", unlockedAt:0 },
+  { name:"The Rootrealms", unlockedAt:25000 },
+  { name:"Brightsteel City", unlockedAt:50000 }
+];
+
+// Demo backgrounds (solid colors for now)
+const SCENE_BACKGROUNDS = ["#2e3a5a", "#273548", "#222831"];
+
+// ============ GAME STATE & VARIABLES ===========
+let gameState = "title"; // title, charselect, levelselect, playing, pause, win, lose
+let highScore = Number(localStorage.getItem("forgeborn_highscore") || "0");
+let currentScore = 0;
+let selectedCharIdx = 0;
+let selectedLevelIdx = 0;
+
+// Gameplay state
+let player = null;
+let enemies = [];
+let comboCount = 0;
+let comboTimer = null;
+let playerHealth = 100;
+let inGameSceneY = 0;
+
+// ============ CANVAS SETUP ============
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+// ============ UTILS (as in original) ===========
+function lerp(a,b,t){ return a+(b-a)*t; }
+function clamp(x,a,b){ return Math.max(a,Math.min(x,b)); }
+function drawButton(x,y,w,h,text,isActive){
+  ctx.save();
+  ctx.globalAlpha = isActive ? 1 : .5;
+  ctx.fillStyle = isActive ? "#ff9200" : "#555";
+  ctx.fillRect(x,y,w,h);
+  ctx.strokeStyle="#fff";
+  ctx.lineWidth=2;
+  ctx.strokeRect(x,y,w,h);
+  ctx.fillStyle="#fff";
+  ctx.font="bold 28px Segoe UI";
+  ctx.textAlign="center";
+  ctx.textBaseline="middle";
+  ctx.fillText(text,x+w/2,y+h/2);
+  ctx.restore();
 }
-gameLoop();
-    </script>
+
+function getUnlockedChars(){
+    return CHARACTERS.filter(c=>highScore>=c.unlockedAt);
+}
+function getUnlockedLevels(){
+    return LEVELS.filter(l=>highScore>=l.unlockedAt);
+}
+
+// ============ TITLE SCREEN ============
+function drawTitle(){
+    // BG
+    let grad=ctx.createLinearGradient(0,0,0,canvas.height);
+    grad.addColorStop(0,"#191723");
+    grad.addColorStop(1,"#502a11");
+    ctx.fillStyle=grad;ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    // Animated Solforge Tower
+    ctx.save();
+    let t=Date.now()/800;
+    ctx.translate(canvas.width/2,canvas.height/2-90 + Math.sin(t)*8);
+    ctx.fillStyle="#aaa";ctx.fillRect(-32,-160,64,220);
+    ctx.strokeStyle="#ffb347";ctx.lineWidth=6;
+    ctx.beginPath();ctx.arc(0,-160,32,Math.PI*2,false);ctx.stroke();
+    // Corruption effect
+    ctx.globalAlpha=0.18+Math.abs(Math.sin(t*1.3))*0.12;
+    ctx.fillStyle="#9d2cff";ctx.beginPath();
+    ctx.arc(18,-140+Math.cos(t)*16,16+Math.sin(t*1.9)*4,0,Math.PI*2);ctx.fill();
+    ctx.globalAlpha=1;ctx.restore();
+
+    // Title
+    ctx.fillStyle="#ffb347";
+    ctx.font="bold 46px Segoe UI";
+    ctx.textAlign="center";
+    ctx.shadowColor="#602f07";ctx.shadowBlur=14;
+    ctx.fillText("FORGEBORN:",canvas.width/2,110);
+    ctx.fillStyle="#fff";
+    ctx.font="bold italic 36px Segoe UI";
+    ctx.shadowBlur=8;ctx.shadowColor="#bc3cff";
+    ctx.fillText("SOLSTICE BREAK",canvas.width/2,160);
+    ctx.shadowBlur=0;
+
+    // High Score
+    ctx.font="bold 26px Segoe UI";ctx.fillStyle="#f7e17c";
+    ctx.fillText("High Score: "+highScore.toLocaleString(),canvas.width/2,260);
+
+    // Prompt
+    let blink=(Math.floor(Date.now()/500)%2)==0;
+    if(blink){
+        ctx.font="bold italic 28px Segoe UI";
+        ctx.fillStyle="#fff";
+        ctx.fillText("[ Press Any Button to Start ]",canvas.width/2,340);
+    }
+}
+
+// ============ CHARACTER SELECT ============
+function drawCharSelect(){
+    // BG
+    ctx.fillStyle="#262335";ctx.fillRect(0,0,canvas.width,canvas.height);
+    // Title
+    ctx.font="bold 34px Segoe UI";
+    ctx.fillStyle="#ffb347";
+    ctx.textAlign="center";
+    ctx.fillText("Choose Your Forgeborn",canvas.width/2,64);
+
+    let chars=CHARACTERS;
+    let spacing=110,x0=canvas.width/2-(chars.length-1)*spacing/2;
+
+    for(let i=0;i<chars.length;++i){
+        let x=x0+i*spacing,y=180,r=48;
+        let isUnlocked=highScore>=chars[i].unlockedAt;
+        // Portrait circle
+        ctx.save();
+        ctx.beginPath();ctx.arc(x,y,r+8,0,Math.PI*2);ctx.closePath();
+        ctx.globalAlpha=isUnlocked?1:.15;
+        ctx.strokeStyle="#fff";ctx.lineWidth=(i==selectedCharIdx)?7:3;ctx.stroke();
+        // Faction color
+        ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.closePath();
+        ctx.fillStyle=chars[i].color;ctx.globalAlpha=isUnlocked?.85:.19;ctx.fill();
+        if(!isUnlocked){
+            ctx.globalAlpha=.5;
+            ctx.fillStyle="#222";
+            ctx.beginPath();ctx.arc(x,y,r-4,0,Math.PI*2);ctx.closePath();ctx.fill();
+        }
+        // Char initial
+        ctx.globalAlpha=1;ctx.font="bold italic 38px Segoe UI";
+        ctx.fillStyle="#fff";ctx.textAlign="center";
+        ctx.fillText(chars[i].name[0],x,y+7);
+
+        // Lock info
+        if(!isUnlocked){
+            ctx.font="16px Segoe UI";ctx.fillStyle="#ffb347";
+            ctx.fillText("Unlocks @ "+chars[i].unlockedAt,x,y+r+24);
+        }
+        if(i==selectedCharIdx){
+            ctx.font="italic bold 20px Segoe UI";ctx.fillStyle="#fff";
+            ctx.fillText(chars[i].name+" ("+chars[i].faction+")",x,y+r+44);
+            if(isUnlocked){
+                drawButton(x-48,y+r+56,96,36,"SELECT",true);
+            }
+        }
+        ctx.restore();
+    }
+}
+
+// ============ LEVEL SELECT ============
+function drawLevelSelect(){
+    // BG
+    ctx.fillStyle="#232e35";ctx.fillRect(0,0,canvas.width,canvas.height);
+    // Title
+    ctx.font="bold 34px Segoe UI";
+    ctx.fillStyle="#ffb347";
+    ctx.textAlign="center";
+    ctx.fillText("Select Level",canvas.width/2,64);
+
+    let levels=LEVELS;
+    let spacing=70,y0=140;
+
+    for(let i=0;i<levels.length;++i){
+        let y=y0+i*spacing,x=canvas.width/2-120,w=240,h=52;
+        let isUnlocked=highScore>=levels[i].unlockedAt;
+
+        // BG box
+        ctx.save();ctx.globalAlpha=isUnlocked?1:.25;
+        ctx.strokeStyle=isUnlocked?"#f7e17c":"#555";ctx.lineWidth=(i==selectedLevelIdx)?4:2;
+        ctx.strokeRect(x,y,w,h);
+        // Preview BG color block for demo
+        if(isUnlocked){
+            ctx.fillStyle=SCENE_BACKGROUNDS[i%SCENE_BACKGROUNDS.length];
+            ctx.globalAlpha=.13;ctx.fillRect(x,y,w,h);
+        }
+
+        // Level name
+        ctx.font="bold italic 26px Segoe UI";ctx.textAlign="left";ctx.globalAlpha=isUnlocked?1:.4;
+        ctx.fillStyle=isUnlocked?"#fff":"#888";
+        ctx.fillText(levels[i].name,x+18,y+33);
+
+        // Lock info
+        if(!isUnlocked){
+            ctx.font="16px Segoe UI";ctx.fillStyle="#ffb347";ctx.globalAlpha=.9;
+            ctx.textAlign="center";
+            ctx.fillText("Unlocks @ "+levels[i].unlockedAt,x+w/2,y+h+23);
+        }
+
+        // Select button if unlocked & selected
+        if(isUnlocked && i==selectedLevelIdx){
+            drawButton(x+w+14,y+6,92,38,"PLAY",true);
+        }
+        ctx.restore();
+    }
+}
+
+// ============ GAMEPLAY PLACEHOLDER ============
+function drawGameplay(){
+  // Basic placeholder gameplay scene
+  // In real game you'll call your resetGamePlay and real logic here!
+  ctx.fillStyle="#18151c";ctx.fillRect(0,0,canvas.width,canvas.height);
+  // Demo scene bg:
+  let bgcol = SCENE_BACKGROUNDS[selectedLevelIdx % SCENE_BACKGROUNDS.length];
+  ctx.globalAlpha=.22;ctx.fillStyle=bgcol;ctx.fillRect(0,0,canvas.width,canvas.height);ctx.globalAlpha=1;
+
+  // HUD bar (top)
+  ctx.fillStyle="#333d44";ctx.fillRect(0,0,canvas.width,38);
+  ctx.font="bold 20px Segoe UI";ctx.textAlign="left";ctx.fillStyle="#fff";
+  ctx.fillText("Score: "+currentScore.toLocaleString(),16,27);
+  
+  // Player placeholder:
+  let px=canvas.width/2-21, py=canvas.height-140;
+  let char=getUnlockedChars()[selectedCharIdx];
+  ctx.save();
+      ctx.beginPath();ctx.arc(px+21,py+34,34,0,Math.PI*2);ctx.closePath();
+      ctx.globalAlpha=.5;ctx.fillStyle=char.color;ctx.fill();
+      ctx.globalAlpha=1;ctx.lineWidth=4;ctx.strokeStyle="#fff";ctx.stroke();
+      // Body:
+      ctx.beginPath();ctx.arc(px+21,py+42,18,Math.PI*1.1,.9*Math.PI,true);ctx.stroke();
+      // Head:
+      ctx.beginPath();ctx.arc(px+21,py+22,14,0,Math.PI*2);ctx.closePath();ctx.stroke();
+      // Initial:
+      ctx.font="bold italic 32px Segoe UI";ctx.textAlign="center";ctx.textBaseline="middle";
+      ctx.fillStyle="#fff";ctx.globalAlpha=.9;
+      ctx.fillText(char.name[0],px+21,py+22);
+      // Name label:
+      ctx.font="14px Segoe UI";ctx.globalAlpha=.8;
+      ctx.fillText(char.name+" ("+char.faction+")",px+21,py+68);
+      // Health bar:
+      let hpw=90,hpval=Math.max(0,(playerHealth||100));
+      let hpx=px-25,hpy=py+88;
+      ctx.globalAlpha=.9;ctx.strokeStyle="#ffb347";ctx.lineWidth=3;ctx.strokeRect(hpx,hpy,hpw,10);
+      ctx.globalAlpha=.7;ctx.fillStyle="#ff9200";ctx.fillRect(hpx,hpy,hpw*(hpval/100),10);      
+      // End player
+      ctx.restore();
+
+   // Demo info text:
+   ctx.font="italic bold 22px Segoe UI";ctx.textAlign="center";ctx.globalAlpha=.7;ctx.fillStyle="#fff";
+   if(playerHealth>0) {
+     ctx.fillText("[ Press ESC to Pause ]",canvas.width/2,60);
+   } else {
+     ctx.fillText("[ Game Over ]",canvas.width/2,60);
+   }
+   ctx.globalAlpha=1;
+}
+
+// PAUSE SCREEN
+function drawPause(){
+   drawGameplay();
+   // Overlay pause menu
+   let w=340,h=230,x=(canvas.width-w)/2,y=(canvas.height-h)/2;
+   ctx.save();
+   ctx.globalAlpha=.87;ctx.fillStyle="#191723";ctx.fillRect(x,y,w,h);ctx.globalAlpha=1;
+   ctx.strokeStyle="#fff";ctx.lineWidth=4;ctx.strokeRect(x,y,w,h);
+   let opts=["Resume","Restart Level","Quit to Title"];
+   for(let i=0;i<opts.length;++i){
+     drawButton(x+40,y+40+i*58,w-80,48,opts[i],true);
+   }
+   // PAUSED header
+   ctx.font="bold italic 32px Segoe UI";ctx.textAlign="center";ctx.globalAlpha=.98;ctx.fillStyle="#ffb347";
+   ctx.fillText("PAUSED",x+w/2,y+28);
+   ctx.restore();
+}
+
+// WIN/LOSE screens placeholder
+function drawWin() {
+   drawGameplay();
+   let w=340,h=130,x=(canvas.width-w)/2,y=(canvas.height-h)/2;
+   ctx.save();
+   ctx.globalAlpha=.95;ctx.fillStyle="#18151c";ctx.fillRect(x,y,w,h);ctx.globalAlpha=1;
+   ctx.strokeStyle="#fff";ctx.lineWidth=3;ctx.strokeRect(x,y,w,h);
+
+   let msg = (gameState==="win") ? "LEVEL COMPLETE!" : "GAME OVER";
+   let color = (gameState==="win") ? "#18d860" : "#bc3cff";
+
+   // Header
+   ctx.font="bold italic 30px Segoe UI";ctx.textAlign="center";ctx.globalAlpha=.98;ctx.fillStyle=color;
+   ctx.fillText(msg,x+w/2,y+36);
+
+   // Score info
+   let hsMsg = "High Score: "+highScore.toLocaleString();
+   let scMsg = "Your Score: "+currentScore.toLocaleString();
+   let yOff = y + h -38;
+   if(gameState==="win") {
+     drawButton(x+w/4-48,yOff-12,96,36,"CONTINUE",true);
+     drawButton(x+w*3/4-48,yOff-12,96,36,"RESTART",true);
+   } else {
+     drawButton(x+w/2-48,yOff-12,96,36,"RETRY",true);
+   }
+   // Score text
+   ctx.font="18px Segoe UI";ctx.globalAlpha=.93;ctx.fillStyle="#fff";
+   ctx.fillText(scMsg,x+w/2,y+74);
+   if(highScore) {
+     ctx.font="16px Segoe UI";
+     ctx.fillText(hsMsg,x+w/2,y+98);
+   }
+   ctx.restore();
+}
+
+// ================= MAIN LOOP =======================
+function mainLoop() {
+   switch(gameState) {
+     case "title":         drawTitle(); break;
+     case "charselect":    drawCharSelect(); break;
+     case "levelselect":   drawLevelSelect(); break;
+     case "playing":       drawGameplay(); break;
+     case "pause":         drawPause(); break;
+     case "win": case "lose": drawWin(); break;
+     default:              drawTitle(); break;
+   }
+   requestAnimationFrame(mainLoop);
+}
+mainLoop();
+
+// ================= INPUT HANDLING ====================
+
+// Helper to detect canvas-relative mouse/touch coordinates (for button clicks etc)
+function getMousePos(evt) {
+  var rect = canvas.getBoundingClientRect(), scaleX = canvas.width / rect.width,
+      scaleY = canvas.height / rect.height;
+  return {
+      x: (evt.clientX - rect.left) * scaleX,
+      y: (evt.clientY - rect.top) * scaleY
+  };
+}
+
+// KEYBOARD NAVIGATION AND STATE ADVANCE
+window.addEventListener('keydown', function(e) {
+   if(gameState==="title") {
+     gameState = "charselect";
+     selectedCharIdx = getUnlockedChars().findIndex(c=>c.unlockedAt<=highScore) || 0;
+     return;
+   }
+   if(gameState==="charselect") {
+     let unlockedCount=getUnlockedChars().length;
+     if(e.key==="ArrowRight") selectedCharIdx=Math.min(selectedCharIdx+1,getUnlockedChars().length-1);
+     if(e.key==="ArrowLeft") selectedCharIdx=Math.max(selectedCharIdx-1,0);
+
+     if(e.key==="Enter" || e.key===" ") {
+       if(getUnlockedChars()[selectedCharIdx]) {
+         gameState = "levelselect";
+         selectedLevelIdx = getUnlockedLevels().findIndex(l=>l.unlockedAt<=highScore) || 0;
+       }
+     }
+     return;
+   }
+   if(gameState==="levelselect") {
+     let unlockedLvls=getUnlockedLevels().length;
+     if(e.key==="ArrowDown") selectedLevelIdx=Math.min(selectedLevelIdx+1,getUnlockedLevels().length-1);
+     if(e.key==="ArrowUp") selectedLevelIdx=Math.max(selectedLevelIdx-1,0);
+
+     if(e.key==="Enter" || e.key===" ") {
+       if(getUnlockedLevels()[selectedLevelIdx]) {
+         gameState = "playing";
+         playerHealth = 100; currentScore = 0; // reset demo vars!
+       }
+     }
+     return;
+   }
+   if(gameState==="playing") {
+     if(e.key==="Escape") {
+       gameState = "pause";
+       return;
+     }
+     // For gameplay controls etc.
+     return;
+   }
+   if(gameState==="pause") {
+     if(e.key==="Escape") { gameState = "playing"; return; }
+     return;
+   }
+   if(gameState==="win" || gameState==="lose") {
+      gameState = "title"; return;
+   }
+});
+
+// MOUSE INTERACTION (for select buttons)
+canvas.addEventListener('mousedown', function(evt){
+ var p=getMousePos(evt);
+
+ if(gameState==="charselect"){
+   // Did user click the SELECT button of the active character?
+   let chars=getUnlockedChars();
+   let currCharX = canvas.width/2-(CHARACTERS.length-1)*110/2 + selectedCharIdx*110,
+       currCharY =180+48+56,
+       btnW=96,
+       btnH=36;
+
+   let isUnlocked=(highScore>=CHARACTERS[selectedCharIdx].unlockedAt);
+
+   if(isUnlocked && p.x>=currCharX-48 && p.x<=currCharX-48+btnW && p.y>=currCharY && p.y<=currCharY+btnH){
+       gameState="levelselect";
+       selectedLevelIdx=getUnlockedLevels().findIndex(l=>l.unlockedAt<=highScore)||0;
+       return;
+   }
+
+ } else if(gameState==="levelselect"){
+     let spacing=70,y0=140,w=240,h=52,lvlx=canvas.width/2-120,lvlBtnW=92,lvlBtnH=38;
+
+     for(let i=0;i<getUnlockedLevels().length;++i){
+       let ly=y0+i*spacing,lvlBtnX=lvlx+w+14,lvlBtnY=ly+6;
+
+       if(p.x>=lvlBtnX && p.x<=lvlBtnX+lvlBtnW && p.y>=lvlBtnY && p.y<=lvlBtnY+lvlBtnH){
+          selectedLevelIdx=i;gameState='playing';playerHealth=100;currentScore=0;return;
+       }
+     }
+
+ } else if(gameState==="pause"){
+     // Pause menu options!
+     let w=340,h=230,x=(canvas.width-w)/2,y=(canvas.height-h)/2,optH=48,optPadY=y+40;
+     for(let i=0;i<3;++i){
+       if(p.x>=x+40 && p.x<=x+w-40 && p.y>=optPadY+i*58 && p.y<=optPadY+i*58+optH){
+         if(i===0){ gameState='playing'; }           // Resume
+         else if(i===1){ gameState='playing'; playerHealth=100; currentScore=0;} // Restart Level (demo)
+         else if(i===2){ gameState='title'; }       // Quit to title
+         return;
+       }
+     }
+
+ } else if(gameState==="win"||gameState==="lose"){
+     let w=340,h=130,x=(canvas.width-w)/2,y=(canvas.height-h)/2,
+         btnW=96,btnH=36,yOff=y+h-38;
+
+     if(gameState==='win') {
+       // CONTINUE button
+       if(p.x>=(x+w/4-48)&&p.x<=(x+w/4-48)+btnW&&p.y>=(yOff-12)&&p.y<=(yOff-12)+btnH) { gameState='title';return;}
+       // RESTART button
+       if(p.x>=(x+w*3/4-48)&&p.x<=(x+w*3/4-48)+btnW&&p.y>=(yOff-12)&&p.y<=(yOff-12)+btnH) { gameState='playing';playerHealth=100;currentScore=0;return;}
+     } else {
+       // RETRY button
+       if(p.x>=(x+w/2-48)&&p.x<=(x+w/2-48)+btnW&&p.y>=(yOff-12)&&p.y<=(yOff-12)+btnH) { gameState='playing';playerHealth=100;currentScore=0;return;}
+     }
+ }
+
+});
+
+// Touch for mobile taps (same as mouse)
+canvas.addEventListener('touchstart', function(evt){
+ evt.preventDefault();
+ var t = evt.changedTouches[0];
+ var e={clientX:t.clientX, clientY:t.clientY};
+ canvas.dispatchEvent(new MouseEvent('mousedown',{clientX:e.clientX,clientY:e.clientY}));
+},{passive:false});
+
+</script>
 </body>
 </html>
