@@ -250,262 +250,131 @@ function drawLevelSelect() {
    ctx.strokeStyle=(i===selectedLevelIdx)?"#f7e17c":"#555";ctx.lineWidth=(i===selectedLevelIdx)?4:2;
    ctx.strokeRect(x,y,w,h);
    // Level BG Preview (solid color for now)
-   if(unlocked){ctx.globalAlpha=.17;ctx.fillStyle=lvl.scenes[0].bg;ctx.fillRect(x,y,w,h);}
-   // Level Name
-   ctx.globalAlpha=unlocked?1:.45;ctx.font="bold italic 22px Segoe UI";ctx.textAlign="left";
+   if(unlocked){ctx.globalAlpha=.21;ctx.fillStyle=lvl.scenes[0].bg;ctx.fillRect(x,y,w,h);}
+   // Level name
+   ctx.globalAlpha=unlocked?1:.45;ctx.font="bold italic 22px Segoe UI";
+   ctx.textAlign="left";
    ctx.fillStyle="#fff";
-   ctx.fillText(lvl.name,x+22,y+36);
-   
-   // Unlock requirement
-   if(!unlocked){
-     ctx.font="14px Segoe UI";ctx.fillStyle="#ffb347";ctx.globalAlpha=.9;ctx.textAlign="center";
-     ctx.fillText("Unlocks @ "+lvl.unlockedAt,x+w/2,y+h+19);
-   }
-   
+   ctx.fillText(lvl.name,x+18,y+34);
+
+   // Lock info
+   if(!unlocked){ctx.font="15px Segoe UI";ctx.fillStyle="#ffb347";ctx.globalAlpha=.9;ctx.textAlign="center";
+     ctx.fillText("Unlocks @ "+lvl.unlockedAt,x+w/2,y+h+19);}
    // Select button for unlocked & selected
-   if(i===selectedLevelIdx && unlocked){
-     drawUIButton(x+w+12,y+9,"PLAY",()=>{startGamePlay(i);});
+   if(unlocked && i==selectedLevelIdx){
+     drawUIButton(x+w+10,y+10,"START",()=>{startGamePlay(i);});
    }
    ctx.restore();
  }
 }
 
-// Keyboard navigation for level select
-window.addEventListener('keydown',(e)=>{
- if(state!=="levelselect")return;
- if(e.key==="ArrowUp"||e.key==="w"){selectedLevelIdx=(selectedLevelIdx+LEVELS.length-1)%LEVELS.length;}
- if(e.key==="ArrowDown"||e.key==="s"){selectedLevelIdx=(selectedLevelIdx+1)%LEVELS.length;}
- let selLvl=LEVELS[selectedLevelIdx];
- if((e.key==="Enter"||e.key===" ") && highScore>=selLvl.unlockedAt){startGamePlay(selectedLevelIdx);}
- render();
-});
-
-// Click navigation for level select
-canvas.addEventListener("click",(e)=>{
- if(state!=="levelselect")return;
- let mx=e.offsetX,my=e.offsetY,
-     yStart=120,
-     spacing=80,
-     x=70,w=340,h=56;
-
- for(let i=0;i<LEVELS.length;++i){
-   let y=yStart+i*spacing;
-   if(mx>x && mx<(x+w)&&my>y&&my<(y+h)){
-     selectedLevelIdx=i; render();
-     break;
-   }
- }
-});
-
-// ============== GAMEPLAY (VERTICAL SCENE PROGRESS) ==============
+// Start game logic placeholder (demo vertical slice)
 function startGamePlay(levelIdx) {
+ state="playing";
+ currentLevel = LEVELS[levelIdx];
+ currentSceneIdx = 0; playerY = -30;
  uiOverlay.innerHTML='';
- state='playing';
- currentLevel=LEVELS[levelIdx];
- currentSceneIdx=0;
- playerY=40; // Start at top of scene
- currentScore=0;
  render();
- requestAnimationFrame(gameLoop);
 }
 
-function gameLoop() {
+// Simple vertical-scrolling scene (demo)
+function drawGamePlay() {
+ const scene=currentLevel.scenes[currentSceneIdx];
+ // BG
+ ctx.fillStyle=scene.bg;ctx.fillRect(0,0,canvas.width,canvas.height);
+ // Scene label
+ ctx.font="bold italic 28px Segoe UI";ctx.textAlign='center';ctx.globalAlpha=.13;ctx.fillStyle="#fff";
+ ctx.fillText(scene.label,canvas.width/2,90);
+
+ // Player "Forgeborn"
+ let playerX=canvas.width/2,py=(playerY<400)?playerY+200:400,vcol=getUnlockedCharacters()[selectedCharIdx].color;
+ // Body
+ ctx.save();
+ ctx.globalAlpha=.97; 
+ ctx.beginPath();ctx.ellipse(playerX,py,28,44,0,0,Math.PI*2);ctx.closePath();
+ ctx.fillStyle=vcol;ctx.shadowColor=vcol;ctx.shadowBlur=22;ctx.fill();
+ // Faceplate (white ellipse)
+ ctx.shadowBlur=0;ctx.globalAlpha=.99;ctx.beginPath();ctx.ellipse(playerX,py-10,16,24,0,0,Math.PI*2);ctx.closePath();ctx.fillStyle="#fff";ctx.fill();
+ // Nameplate
+ let nm=getUnlockedCharacters()[selectedCharIdx].name[0];
+ ctx.font='bold italic 26px Segoe UI';ctx.globalAlpha=.7;ctx.textAlign='center';ctx.fillStyle='#232e35';
+ ctx.fillText(nm,playerX,py+7);
+ ctx.restore();
+
+ // Progress bar (vertical)
+ let prog=(playerY+200)/canvas.height;
+ let barH=Math.max(12,(prog)*canvas.height*0.84);
+ ctx.save();
+ ctx.globalAlpha=.22;ctx.fillStyle=vcol;ctx.fillRect(canvas.width-36,(canvas.height-barH)-25,16,barH);
+ ctx.restore();
+
+ // HUD (score)
+ ctx.globalAlpha=.96;ctx.font='bold italic 21px Segoe UI';ctx.textAlign='left';ctx.fillStyle='#f7e17c';
+ ctx.fillText("Score:"+currentScore.toLocaleString(),24,38);
+
+ // Instructions / next scene transition
+ if(py>=400&&currentSceneIdx<currentLevel.scenes.length-1){
+   ctx.font='italic bold 22px Segoe UI';ctx.globalAlpha=.96;ctx.textAlign='center';ctx.fillStyle='#fff';
+   ctx.fillText("[ Press Down to descend ]",canvas.width/2,canvas.height-42);
+ }
+ if(py>=400&&currentSceneIdx===currentLevel.scenes.length-1){
+   ctx.font='italic bold 22px Segoe UI';ctx.globalAlpha=.96;ctx.textAlign='center';ctx.fillStyle='#fff';
+   ctx.fillText("[ Press Down to finish ]",canvas.width/2,canvas.height-42);
+ }
+}
+
+// Gameplay input (vertical movement)
+window.addEventListener('keydown',e=>{
  if(state!=="playing")return;
-
- updateGameplay();
- drawGameplay();
-
- requestAnimationFrame(gameLoop);
-}
-
-function updateGameplay() {
- // Simple vertical descent with arrow keys/WASD/tap
- document.onkeydown=function(e){
-   if(e.key==="ArrowDown"||e.key==="s"){playerY+=7;}
-   else if(e.key==="ArrowUp"||e.key==="w"){playerY-=7;}
- };
- playerY=Math.max(40,Math.min(playerY,canvas.height-60));
-
- // Progress scene on reaching bottom
- if(playerY>=canvas.height-60){
-   currentSceneIdx++;
-   if(currentSceneIdx>=currentLevel.scenes.length){
-     completeLevel();
-     return;
+ if(e.key==="ArrowDown"||e.key==="s"){
+   if(playerY<400) playerY+=40;
+   else{
+     if(currentSceneIdx<currentLevel.scenes.length-1){
+       currentSceneIdx++; playerY=-30; render();
+     }else{
+       state='complete'; render();
+     }
    }
-   playerY=40; // Reset to top of new scene
+ }else if(e.key==="ArrowUp"||e.key==="w"){
+   playerY=Math.max(-30,playerY-40);
  }
-}
+});
 
-function drawGameplay() {
+// ============== LEVEL COMPLETE SCREEN (Demo) ==============
+function drawCompleteScreen(){
  uiOverlay.innerHTML='';
- // BG color (placeholder for PNG)
- let scene=currentLevel.scenes[currentSceneIdx];
- ctx.fillStyle=scene.bg||"#191723";ctx.fillRect(0,0,canvas.width,canvas.height);
-
- // Scene Label
- ctx.font="italic bold 20px Segoe UI";ctx.textAlign="right";ctx.fillStyle="#fff8";
- ctx.fillText(scene.label||"",canvas.width-18,36);
-
- // Player avatar (circle)
- let char=getUnlockedCharacters()[selectedCharIdx];
- ctx.save();
- ctx.beginPath();ctx.arc(canvas.width/2,playerY,28,0,Math.PI*2);ctx.closePath();
- ctx.shadowColor="#fff7";ctx.shadowBlur=10;ctx.strokeStyle="#fff";ctx.lineWidth=4;ctx.stroke();
- ctx.shadowBlur=0;ctx.fillStyle=char.color;ctx.globalAlpha=.95;ctx.fill();
-
- // Initial
- ctx.font="28px Segoe UI";ctx.textAlign="center";ctx.globalAlpha=.85;ctx.fillStyle="#fff";
- ctx.fillText(char.name[0],canvas.width/2,playerY+9);
-
- // Pseudo shadow ground at bottom
- ctx.globalAlpha=.43;ctx.beginPath();ctx.ellipse(canvas.width/2,canvas.height-48,52,14,0,0,Math.PI*2);ctx.fillStyle="#000";ctx.fill();
- ctx.restore();
-
- // HUD - Score & Progress bar
- drawHUD();
-}
-
-function drawHUD() {
- // Top bar box
- ctx.save();
- ctx.globalAlpha=.85;ctx.fillStyle="#23253d";
- ctx.fillRect(10,10,460,38);
- ctx.font="italic bold 22px Segoe UI";ctx.globalAlpha=.97;ctx.textAlign="left";
+ ctx.clearRect(0,0,canvas.width,canvas.height);
+ // Banner
+ ctx.font='bold italic 34px Segoe UI';ctx.textAlign='center';ctx.globalAlpha=.95;ctx.fillStyle='#f7e17c';
+ ctx.fillText("LEVEL COMPLETE!",canvas.width/2,108);
+ // Score
+ currentScore+=1000*(currentSceneIdx+1); // demo bonus
+ if(currentScore>highScore){highScore=currentScore;localStorage.setItem("forgeborn_highscore",String(highScore));}
  
- // Score display
- ctx.fillStyle="#ffb347";
- ctx.fillText("Score:",22,37); 
- ctx.font="italic bold 23px Segoe UI";ctx.fillStyle="#fff";
- ctx.fillText(currentScore.toLocaleString(),102,37);
+ // Stats
+ ctx.font='21px Segoe UI';ctx.globalAlpha=.88;ctx.fillStyle='#fff';
+ let y=180,x=canvas.width/2;
+ ctx.fillText("Level Score: "+currentScore,x,y+36);
+ ctx.fillText("High Score: "+highScore,x,y+66);
 
- // Character label (right)
- let char=getUnlockedCharacters()[selectedCharIdx];
- ctx.textAlign='right';ctx.font='italic bold 18px Segoe UI';ctx.fillStyle='#bc3cff';
- ctx.fillText(char.name+" / "+char.faction+" ",470-12,37);
-
- // Progress bar at bottom showing vertical progress in scene:
- let sceneHgt=canvas.height-100-40,pct=(playerY-40)/sceneHgt;
- pct=Math.max(0.01,pct);
- let barLen=Math.floor(pct*440);
- 
- // Progress Bar:
- let yBar=canvas.height-34,xBar=20,wBar=440,hBar=16;
- // Outer bar bg
- ctx.globalAlpha=.18;ctx.fillStyle="#fff";ctx.fillRect(xBar,yBar,wBar,hBar);
- // Fill bar
- let gradBG=ctx.createLinearGradient(xBar,yBar,xBar+barLen,yBar+hBar);
- gradBG.addColorStop(0,"#bc3cff");gradBG.addColorStop(1,"#ff9200");
- ctx.globalAlpha=.77;ctx.fillStyle=gradBG;ctx.fillRect(xBar,yBar,barLen,hBar);
- 
- // Bar frame
- ctx.globalAlpha=.55;ctx.strokeStyle='#fff';ctx.lineWidth=3;ctx.strokeRect(xBar,yBar,wBar,hBar);
-
- // Progress % label
- ctx.font='italic bold 15px Segoe UI';ctx.textAlign='right';ctx.globalAlpha=.55;ctx.fillStyle='#fff';
- let pctTxt=Math.floor(pct*100)+'%';
- ctx.fillText(pctTxt,xBar+wBar-5,yBar+hBar-4);
-
- ctx.restore();
-}
-
-// Level complete handler (vertical slice only)
-function completeLevel() {
- state='complete';
- highScore=Math.max(highScore,currentScore);
- localStorage.setItem("forgeborn_highscore",highScore+"");
- render();
-}
-
-// ============== RENDERING LOGIC CONTROLLER ==============
-function render() {
- uiOverlay.innerHTML=''; // Remove old buttons
-
- switch(state) {
- case "title": drawTitleScreen(); break;
- case "charselect": drawCharacterSelect(); break;
- case "levelselect": drawLevelSelect(); break;
- case "playing": /* handled by gameloop*/ break;
- case "complete": drawLevelCompleteScreen(); break;
- }
-}
-
-// Level Complete Screen (vertical slice version)
-function drawLevelCompleteScreen() {
- // BG fade-out effect
- ctx.save();ctx.globalAlpha=.94;ctx.fillStyle="#23253d";ctx.fillRect(0,0,canvas.width,canvas.height);ctx.restore();
-
- let yBase=180,xC=canvas.width/2;
-
- // Header
- ctx.font="bold italic 34px Segoe UI";ctx.textAlign='center';ctx.fillStyle='#ffb347';
- ctx.fillText("LEVEL COMPLETE!",xC,yBase);
-
- // Score summary
- yBase+=54; 
- ctx.font="italic bold 22px Segoe UI";ctx.fillStyle='#fff';
- ctx.fillText("Score:",xC-75,yBase); 
- ctx.font="italic bold 22px Segoe UI";ctx.fillStyle='#bc3cff';
- ctx.textAlign='left'; 
- ctx.fillText(""+currentScore.toLocaleString(),xC+5,yBase);
-
- yBase+=38;
- // High Score & Next Unlock info:
- let nu=nextUnlock(); 
- let progressStr=(nu?progressToUnlock(nu):"100%");
- 
- if(nu){
-   let unlockLabel=("faction" in nu ? nu.name : nu.name)+" @ "+nu.unlockedAt.toLocaleString();
-   ctx.font="italic bold 18px Segoe UI";ctx.textAlign='center';ctx.fillStyle='#f7e17c';
-   ctx.fillText("Next Unlock:",xC,yBase); yBase+=26; 
-   ctx.fillStyle='#ffb347'; 
-   ctx.font='italic bold 20px Segoe UI';
-   ctx.fillText(unlockLabel,xC,yBase); yBase+=30;
-
-   // Progress bar to next unlock:
-   let px=xC-85,pw=170,pbHgt=13,pct=parseInt(progressStr)/100||1,
-       fillW=pw*pct;
-
-   ctx.save(); 
-     // Outer bar bg
-     ctx.globalAlpha=.15;ctx.fillStyle='#fff'; 
-     ctx.fillRect(px,yBase,pw,pbHgt);
-     // Fill bar
-     let gradBG=ctx.createLinearGradient(px,yBase,px+fillW,yBase+pbHgt);
-     gradBG.addColorStop(0,"#bc3cff");gradBG.addColorStop(1,"#ff9200");
-     ctx.globalAlpha=.77;ctx.fillStyle=gradBG; 
-     ctx.fillRect(px,yBase,fillW,pbHgt);
-     // Frame:
-     ctx.globalAlpha=.6; 
-     ctx.strokeStyle='#fff'; 
-     ctx.lineWidth=2.5; 
-     ctx.strokeRect(px,yBase,pw,pbHgt);
-
-     // % label:
-     ctx.font='italic bold 13px Segoe UI'; 
-     ctx.textAlign='right'; 
-     ctx.globalAlpha=.88; 
-     ctx.fillStyle='#fff';
-     let pctTxt=(progressStr||'100%');
-     ctx.fillText(pctTxt+" ",px+pw-3,yBase+pbHgt-3);
-
-   ctx.restore();
- }
- yBase+=38;
-
- // Continue button:
- drawUIButton(xC-60,yBase,"CONTINUE",()=>{
-   state='title';render();
+ drawUIButton(canvas.width/2-60,y+120,"Continue",()=>{
+    state='title';currentScore=0;render();
  });
 }
 
-// Start rendering loop for non-gameplay screens:
-function mainMenuLoop() {
- if(state!=="playing")
-   render();
- requestAnimationFrame(mainMenuLoop);
+// Main render loop and dispatcher
+function render() {
+ uiOverlay.innerHTML='';
+ if(state==='title') drawTitleScreen();
+ else if(state==='charselect') drawCharacterSelect();
+ else if(state==='levelselect') drawLevelSelect();
+ else if(state==='playing') drawGamePlay();
+ else if(state==='complete') drawCompleteScreen();
 }
-mainMenuLoop();
-
-// Initial render:
 render();
+
+// Ensure correct overlay position on resize (for demo)
+window.addEventListener('resize',()=>{
+ uiOverlay.style.left = canvas.offsetLeft + 'px';
+ uiOverlay.style.top = canvas.offsetTop + 'px';
+});
