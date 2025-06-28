@@ -1,2 +1,658 @@
-<!-- Welcome to Snib AI Game Studio -->
-<!-- Use AI Chat to generate your complete game here -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Into the Forge</title>
+  <meta name="viewport" content="width=480,user-scalable=no">
+  <style>
+    html, body {
+      margin:0; padding:0; background:#121218; color:#fff; font-family:'Segoe UI',Arial,sans-serif;
+      width:100vw; height:100vh; overflow:hidden; user-select:none;
+    }
+    #gameWrapper {
+      position:absolute;top:0;left:0;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;
+      background:linear-gradient(#1a1a25,#21213a 70%,#3d1b25);
+    }
+    canvas {
+      box-shadow:0 0 20px 4px #2e233a;border-radius:12px;background:#22242c;
+      display:block;
+      margin:auto;
+      image-rendering:pixelated;
+    }
+    #uiLayer {
+      position:absolute;top:0;left:0;width:100vw;height:100vh;pointer-events:none;
+      z-index:10;
+    }
+    .fadein {animation:fadein 0.4s;}
+    @keyframes fadein {from{opacity:0;}to{opacity:1;}}
+    .btn {
+      background:#ff983c; color:#fff;font-weight:bold;border:none;border-radius:6px;padding:12px 32px;
+      font-size:1.2em;margin:8px 0;cursor:pointer;box-shadow:0 2px 8px #2f170a44;
+      outline:none;transition:background 0.2s;
+      pointer-events:auto;
+    }
+    .btn:hover {background:#ffa755;}
+    .locked {filter:grayscale(1) brightness(0.7);}
+    .charcard {display:inline-block;margin:12px 18px;text-align:center;}
+    .charimg {width:64px;height:64px;border-radius:50%;border:3px solid #ff983c;background:#15151d;margin-bottom:4px;}
+    .levelcard {display:inline-block;background:#23243b;border-radius:10px;padding:12px 22px;margin:12px;}
+    .levelimg {width:80px;height:48px;background:#181a23;border-radius:6px;margin-bottom:6px;}
+    .hudbar {position:absolute;top:0;left:0;width:100%;height:60px;background:#22242c77;z-index:5;}
+    .hudscore {position:absolute;top:10px;left:32px;font-size:1.3em;font-weight:bold;color:#ff983c;text-shadow:2px 2px #211;}
+    .hudcombo {position:absolute;top:10px;right:24px;font-size:1.1em;color:#58d4ff;text-shadow:2px 2px #113;}
+    .hudhealth {position:absolute;left:50%;transform:translateX(-50%);top:42px;width:180px;height:16px;
+      background:#333;border-radius:8px;border:2px solid #ff983c;}
+    .hudhealthfill {height:100%;background:#ff983c;border-radius:6px;}
+    .pausemenu {position:absolute;width:340px;left:50%;top:40%;transform:translate(-50%,-50%);
+      background:#23243b;border-radius:18px;padding:32px 28px;text-align:center;box-shadow:0 8px 30px #0008;
+      z-index:20;}
+    .blur {filter:blur(3.5px);}
+    /* Responsive */
+    @media (max-width:700px) {
+      canvas {width:98vw !important;height:auto !important;}
+      #uiLayer {font-size:.9em;}
+    }
+  </style>
+</head>
+<body>
+<div id="gameWrapper">
+  <canvas id="gameCanvas" width="432" height="768"></canvas>
+  <div id="uiLayer"></div>
+</div>
+<script>
+/*
+ * INTO THE FORGE - SNIBDESIGN TOWER DEFENSE DEMO
+ * All code self-contained for quick prototyping and playability.
+ */
+
+//--- GAME DATA ---
+
+const CHARACTERS = [
+  {
+    key:"korok", name:"Korok", faction:"Tempys", unlocked:true,
+    desc:"Master of fire & stone. Tough, area control.",
+    color:"#ff983c", icon:"#f84", hp:120, ability:"Fire Burst"
+  },
+  {
+    key:"oros", name:"Oros", faction:"Uterra", unlocked:false,
+    desc:"Deepwood's Chosen. Fast, nature towers.",
+    color:"#71f274", icon:"#7f4", hp:100, ability:"Nature Heal"
+  },
+  {
+    key:"cercee", name:"Cercee", faction:"Nekrium", unlocked:false,
+    desc:"Prophet of death. Debuffs enemies.",
+    color:"#ba7cff", icon:"#a6f", hp:90, ability:"Death Mark"
+  },
+  {
+    key:"ironbeard", name:"Ironbeard", faction:"Alloyin", unlocked:false,
+    desc:"Steel tactician. Tech towers.",
+    color:"#54c4ff", icon:"#4cf", hp:130, ability:"Overcharge"
+  },
+  {
+    key:"ignir", name:"Ignir", faction:"Tempys", unlocked:false,
+    desc:"Giant-blooded speedster. Quick fire towers.",
+    color:"#fa4e2a", icon:"#f44", hp:80, ability:"Blazing Dash"
+  },
+  {
+    key:"voss", name:"Voss", faction:"Nekrium", unlocked:false,
+    desc:"The Root Wyrm. Corrupts defenses.",
+    color:"#a020f0", icon:"#a2f", hp:160, ability:"Darkforge"
+  }
+];
+
+const LEVELS = [
+  {
+    key:"frozenwastes",
+    name:"Frozen Wastes",
+    desc:"Defend the SolForge from the first Darkforged assault.",
+    preview:"#bfe3ff",
+    unlockScore:0,
+    background:"#bfe3ff",
+    waves:[
+      // [time, enemyType, count]
+      { time:120, enemies:[{type:"darkling", count:6}] },
+      { time:300, enemies:[{type:"darkling", count:10},{type:"shambler", count:2}]},
+      { time:600, enemies:[{type:"darkforged", count:3}]}
+    ]
+  },
+  {
+    key:"rootrealms",
+    name:"Rootrealms",
+    desc:"Corrupted flora emerge from below.",
+    preview:"#77cc99",
+    unlockScore:15000,
+    background:"#77cc99",
+    waves:[
+      { time:120,enemies:[{type:"vinefiend",count:7}]},
+      { time:260,enemies:[{type:"vinefiend",count:12},{type:"darkling",count:5}]},
+      { time:450,enemies:[{type:"rootbeast",count:2}]}
+    ]
+  },
+];
+
+// Enemy types definition
+const ENEMY_TYPES = {
+  darkling:{name:"Darkling",hp:16,speed:.7,color:"#333e66",reward:100},
+  shambler:{name:"Shambler",hp:28,speed:.45,color:"#666abb",reward:200},
+  darkforged:{name:"Darkforged",hp:50,speed:.32,color:"#9127b3",reward:500},
+  vinefiend:{name:"Vinefiend",hp:20,speed:.62,color:"#33bb33",reward:120},
+  rootbeast:{name:"Rootbeast",hp:46,speed:.38,color:"#338822",reward:300}
+};
+
+// Tower types per character/faction
+const TOWERS = [
+  {
+    key:'fireturret', name:'Fire Turret', damage:[9,14], range:[80,110], rof:[1.2,1.6], cost:[40,55], color:'#ff6633', faction:'Tempys'
+  },
+  {
+    key:'stonetower', name:'Stone Tower', damage:[13,19], range:[65,90], rof:[.9,1.15], cost:[60,75], color:'#ad8a56', faction:'Tempys'
+  },
+  {
+    key:'naturetower', name:'Nature Tower', damage:[8,11], range:[95,125], rof:[1.35,1.7], cost:[45,60], color:'#29c47e', faction:'Uterra'
+  },
+  {
+    key:'deathobelisk', name:'Death Obelisk', damage:[8,13], range:[90,112], rof:[1.08,1.33], cost:[50,70], color:'#c44ec9', faction:'Nekrium'
+  },
+  {
+    key:'techturret', name:'Tech Turret', damage:[10,18], range:[85,115], rof:[1.1,1.45], cost:[52,74], color:'#3fd8ff', faction:'Alloyin'
+  }
+];
+
+//--- GAME STATE ---
+
+let gameState = 'title'; // title,charselect,levelselect,running,pause,victory
+let selectedChar = null;
+let selectedLevel = null;
+let score = 0;
+let highScore = parseInt(localStorage.getItem('itf_highscore')||'0');
+let levelProgress = {};
+let combo = 0;
+let comboTimer = 0;
+let comboMult = 1;
+let playerHP = 100;
+let forgeHP = 100;
+let mana = 100;
+let placedTowers = [];
+let enemies = [];
+let projectiles = [];
+let waveIdx = -1;
+let waveTime = 0;
+let nextWaveAt = null;
+let gameTimer = 0;
+let isPlacingTower = false;
+let placingTowerType = null;
+let gameCanvas = document.getElementById("gameCanvas");
+let ctx = gameCanvas.getContext('2d');
+const CANVAS_W = gameCanvas.width;
+const CANVAS_H = gameCanvas.height;
+
+//--- UTILS ---
+
+function lerp(a,b,t){return a+(b-a)*t;}
+function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
+function rand(a,b){return a+Math.random()*(b-a);}
+function pick(arr){return arr[Math.floor(Math.random()*arr.length)];}
+
+//--- UI LAYER CONTROL ---
+
+const uiLayer = document.getElementById("uiLayer");
+function showUI(html){
+  uiLayer.innerHTML=html||'';
+}
+function clearUI(){ showUI(''); }
+function fadeUI(html){
+  uiLayer.innerHTML='<div class="fadein">'+html+'</div>';
+}
+function showTitleScreen(){
+  gameState='title';
+  showUI(`
+    <div style="position:absolute;width:${CANVAS_W}px;height:${CANVAS_H}px;left:${(window.innerWidth-CANVAS_W)/2}px;top:${(window.innerHeight-CANVAS_H)/2}px;text-align:center;">
+      <div style="margin-top:${CANVAS_H/6}px;">
+        <h1 style="color:#ff983c;font-size:2.4em;text-shadow:#333 4px 4px;">FORGEBORN:<br>SOLSTICE BREAK</h1>
+        <div style="margin-top:${CANVAS_H/6}px;font-size:.99em;">
+          <span style="color:#58d4ff;font-weight:bold;">High Score:</span> ${highScore}
+        </div>
+        <div style="margin-top:${CANVAS_H/4}px">
+          <span style="font-size:.9em;color:#eee;">[ Press Any Button to Start ]</span>
+        </div>
+      </div>
+      <div style="position:absolute;width:${CANVAS_W}px;height:${CANVAS_H}px;pointer-events:none;">
+        ${drawSolforgeBG()}
+      </div>
+    </div>
+  `);
+}
+function drawSolforgeBG() {
+  // Simple SVG sun + tower effect for title
+  return `<svg width="${CANVAS_W}" height="${CANVAS_H}" style="position:absolute;top:-60px;left:-20px;">
+     <ellipse cx="${CANVAS_W/2}" cy="${CANVAS_H*0.25}" rx="80" ry="38" fill="#fff7bb33"/>
+     <rect x="${CANVAS_W/2-24}" y="${CANVAS_H*0.25}" width="48" height="${CANVAS_H*0.55}" fill="#23243b"/>
+     <rect x="${CANVAS_W/2-12}" y="${CANVAS_H*0.25}" width="24" height="${CANVAS_H*0.52}" fill="#44495a"/>
+     <ellipse cx="${CANVAS_W/2}" cy="${CANVAS_H*0.25}" rx="38" ry="22" fill="#ffeaae"/>
+     <ellipse cx="${CANVAS_W/2}" cy="${CANVAS_H*0.25}" rx="25" ry="15" fill="#fffde7"/>
+     <ellipse cx="${CANVAS_W/2}" cy="${CANVAS_H*0.26}" rx="18" ry="10" fill="#fffde7"/>
+   </svg>`;
+}
+function showCharacterSelect(){
+  gameState='charselect';
+  let html = `<div style="width:${CANVAS_W}px;margin:auto;text-align:center;margin-top:${CANVAS_H/14}px">
+   <h2 style="color:#ff983c">Select Your Forgeborn</h2>`;
+   CHARACTERS.forEach((ch,i)=>{
+     let unlocked=ch.unlocked||(highScore>=unlockCharScore(ch));
+     html+=`<div class="charcard" style="width:auto;">
+       <div class="charimg${unlocked?'':' locked'}" style="background:${ch.color};">${ch.icon}</div>
+       <div>${ch.name}</div>
+       ${unlocked?`
+         <button class="btn" onclick="selectChar('${ch.key}')">Select</button>
+       `:`<span style="color:#888;font-size:.93em;">Unlock at<br>${unlockCharScore(ch)} pts</span>`}
+     </div>`;
+   });
+   html+=`<br><br><button class="btn" onclick="showTitleScreen()">Back</button></div>`;
+   showUI(html);
+}
+function unlockCharScore(ch){
+ if(ch.key=="oros")return(2500);
+ if(ch.key=="cercee")return(9000);
+ if(ch.key=="ironbeard")return(17500);
+ if(ch.key=="ignir")return(25000);
+ if(ch.key=="voss")return(100000);
+ return(0);
+}
+window.selectChar=(k)=>{
+ selectedChar=CHARACTERS.find(c=>c.key===k);
+ showLevelSelect();
+}
+
+function showLevelSelect(){
+ gameState='levelselect';
+ let html=`<div style="width:${CANVAS_W}px;margin:auto;text-align:center;margin-top:${CANVAS_H/14}px">
+   <h2 style="color:${selectedChar.color};">Choose Level</h2>`;
+ LEVELS.forEach(lvl=>{
+   let unlocked=highScore>=lvl.unlockScore;
+   html+=`<div class="levelcard${unlocked?'':' locked'}">
+     <div class="levelimg" style="background:${lvl.preview};"></div>
+     <div><b>${lvl.name}</b></div>
+     ${unlocked?`<button class="btn" onclick="selectLevel('${lvl.key}')">Start</button>`
+       :`<span style="color:#888;font-size:.93em;">Unlock at<br>${lvl.unlockScore} pts</span>`}
+     </div>`;
+ });
+ html+=`<br><br><button class="btn" onclick="showCharacterSelect()">Back</button></div>`;
+ showUI(html);
+}
+window.selectLevel=(k)=>{
+ selectedLevel=LEVELS.find(l=>l.key===k);
+ startLevel(selectedLevel);
+}
+
+//--- GAME LOGIC ---
+
+function startLevel(level){
+ // Reset all state
+ score=0; combo=0; comboTimer=0; comboMult=1; playerHP=selectedChar.hp||100;
+ forgeHP=100; mana=80+Math.floor(Math.random()*30); placedTowers=[]; enemies=[]; projectiles=[];
+ waveIdx=-1; waveTime=0; nextWaveAt=null; gameTimer=0;
+ isPlacingTower=false; placingTowerType=null;
+
+ // Pre-populate tower slots (vertical grid)
+ let gridW=5, gridH=9;
+ placedTowers=[];
+ for(let y=2;y<gridH+1;y++){
+   for(let x=1;x<gridW-1;x++){
+     if(Math.random()<.65){
+       placedTowers.push({x:x,y:y,tower:null});
+     }
+   }
+ }
+ // Always put Forge at base
+ placedTowers.push({x:gridW/2|0,y:gridH+1|0,tower:{key:'forgecore'}});
+ renderHUD();
+ gameState='running';
+ clearUI();
+ requestAnimationFrame(gameLoop);
+ nextWave();
+}
+
+function nextWave(){
+ waveIdx++;
+ if(!selectedLevel.waves[waveIdx]){
+   // Victory!
+   setTimeout(()=>levelComplete(),800);
+   return;
+ }
+ nextWaveAt=Date.now()+selectedLevel.waves[waveIdx].time*1.5+900;
+ spawnWave(selectedLevel.waves[waveIdx]);
+}
+function spawnWave(wave){
+ let delay=1200,waveEnemies=[];
+ wave.enemies.forEach(e=>{
+   for(let i=0;i<e.count;i++){
+     setTimeout(()=>spawnEnemy(e.type),delay+rand(30*i,60*i));
+   }
+   delay+=450*e.count;
+ });
+ waveTime=wavedur(wave);
+}
+function wavedur(wave){
+ let n=wave.enemies.reduce((s,e)=>s+e.count,0);
+ return Math.max(800+n*700,2600);
+}
+function spawnEnemy(type){
+ let info=ENEMY_TYPES[type];
+ if(!info)return;
+ // Spawn at random column at top (y=0)
+ let gridW=5;
+ let x=Math.floor(rand(1,gridW-2));
+ enemies.push({
+   type:type,hp:(info.hp||10),maxhp:(info.hp||10),x:x,y:-1,
+   px:x*86+64+rand(-5,5),py:-64,speed:(info.speed||.7)+rand(-.01,.01),
+   color:(info.color||"#888"),alive:true,pathIdx:-1
+ });
+}
+
+// Tower placement interaction
+gameCanvas.onclick=function(evt){
+ if(gameState!=='running')return;
+ let rect=this.getBoundingClientRect();
+ let mx=(evt.clientX-rect.left)*(this.width/rect.width);
+ let my=(evt.clientY-rect.top)*(this.height/rect.height);
+ // Find nearest empty slot
+ let found=null,minDist=22;
+ placedTowers.forEach(ts=>{
+   if(ts.tower)return;
+   let cx=ts.x*86+64,cy=ts.y*66+54;
+   let d=Math.hypot(mx-cx,my-cy);
+   if(d<minDist){minDist=d;found=ts;}
+ });
+ if(found && isPlacingTower && placingTowerType){
+   // Place a new tower here!
+   let tData=TOWERS.find(t=>t.key===placingTowerType);
+   if(mana>=tData.cost[0]){
+     found.tower={key:tData.key,lvl:1,cooldown:(Math.random()*8)};
+     mana-=tData.cost[0];
+     isPlacingTower=false;
+     placingTowerType=null;
+     renderHUD();
+   } else {
+     flashMessage("Not enough mana!");
+   }
+ }
+};
+
+function renderHUD(){
+ // Update HUD in uiLayer
+ let hud=`<div class="hudbar"></div>
+   <span class="hudscore">Score ${score}</span>
+   <span class="hudcombo">Combo x${comboMult} (${combo})</span>
+   <div class="hudhealth"><div class="hudhealthfill" style="width:${clamp(forgeHP,0,100)*1.8}px;background:${
+       forgeHP>65?"#ff983c":forgeHP>35?"#ffd73f":"#cf303b"
+     }"></div></div>
+   <span style="position:absolute;top:14px;left:${CANVAS_W-140}px;color:#63fbb3;">Mana ${mana|0}</span>
+   <button class="btn" onclick="pauseGame()" style="position:absolute;font-size:.88em;padding:.4em .9em;right:${CANVAS_W-80}px;top:-3px;">Pause</button>`;
+ uiLayer.innerHTML=hud;
+}
+function flashMessage(msg){
+ fadeUI(`<div style="
+   position:absolute;width:${CANVAS_W}px;height:${CANVAS_H}px;text-align:center;padding-top:${CANVAS_H/3}px;font-size:1.5em;color:#fff;text-shadow:#111 2px 2px;">${msg}</div>`);
+ setTimeout(()=>clearUI(),850);
+}
+
+function pauseGame(){
+ if(gameState!=='running')return;
+ gameState='pause';
+ document.body.classList.add("blur");
+ uiLayer.innerHTML+=`
+ <div class='pausemenu'><h2>PAUSED</h2>
+   <button class='btn' onclick='resumeGame()'>Resume</button><br>
+   <button class='btn' onclick='restartLevel()'>Restart Level</button><br>
+   <button class='btn' onclick='showOptions()'>Options</button><br>
+   <button class='btn' onclick='showTitleScreen()'>Quit to Title</button></div>`;
+}
+window.resumeGame=function(){
+ gameState='running';
+ document.body.classList.remove("blur");
+ renderHUD();
+};
+window.restartLevel=function(){
+ document.body.classList.remove("blur");
+ startLevel(selectedLevel);
+};
+window.showOptions=function(){
+ fadeUI(`<div class='pausemenu'>
+   <h3>Options</h3>
+   Sound Volume [|||||---]<br>
+   Music Volume [|||-----]<br>
+   Screen Shake [ON]<br>
+   Particles [ON]<br><br>
+   <button class='btn' onclick='resumeGame()'>Back</button></div>`);
+};
+function levelComplete(){
+ // Update score/unlocks
+ if(score>highScore){
+   localStorage.setItem('itf_highscore',score+'');
+   highScore=score;
+ }
+ fadeUI(`<div style="
+ position:absolute;width:${CANVAS_W}px;height:${CANVAS_H}px;text-align:center;padding-top:${CANVAS_H/4}px;">
+   <h2 style='color:#63fbb3;'>LEVEL COMPLETE!</h2>
+   <div>Level Score:&nbsp;<b>${score}</b></div>
+   <br><button class='btn' onclick='showLevelSelect()'>Continue</button>
+   <button class='btn' onclick='restartLevel()'>Restart</button></div>`);
+ gameState='levelselect';
+}
+
+//--- MAIN GAME LOOP ---
+
+function gameLoop(ts){
+ if(gameState!=='running')return;
+
+ updateGame();
+ drawGame();
+ requestAnimationFrame(gameLoop);
+}
+
+function updateGame(){
+ // Advance timer
+ gameTimer++;
+ // Combo timer
+ if(combo>0){
+   comboTimer--;
+   if(comboTimer<=0){combo=0;comboMult=1;}
+ }
+ // Move enemies
+ enemies.forEach(e=>{
+   if(!e.alive)return;
+   e.py+=e.speed*1.7+(gameTimer%16==e.x?rand(-.11,.13):0);
+   e.y=Math.floor((e.py-54)/66);
+ });
+ // Enemy reaches Forge?
+ enemies.forEach(e=>{
+   if(!e.alive)return;
+   if(e.py>=CANVAS_H-90){
+     forgeHP-=Math.ceil(e.hp*.7);
+     e.alive=false;
+     flashMessage("The Forge core was struck!");
+     if(forgeHP<=0){gameOver();}
+   }
+ });
+ // Projectiles update
+ projectiles.forEach(pr=>{
+   pr.px+=pr.vx*(pr.speed||4); pr.py+=pr.vy*(pr.speed||4);
+ });
+ // Projectile collision
+ for(let pr of projectiles){
+   if(pr.hit)return;
+   for(let e of enemies){
+     if(!e.alive)continue;
+     let d=Math.hypot(pr.px-e.px,pr.py-e.py);
+     if(d<20){
+       e.hp-=pr.damage||8+(comboMult|0)*2;
+       pr.hit=true;
+       if(e.hp<=0){enemyDefeated(e);}
+       break;
+     }
+   }
+ }
+ // Remove dead things
+ projectiles=projectiles.filter(pr=>!pr.hit&&pr.px>-40&&pr.px<CANVAS_W+40&&pr.py>-50&&pr.py<CANVAS_H+40);
+ enemies=enemies.filter(e=>e.alive&&(e.hp>0||e.py<CANVAS_H));
+ // Towers fire!
+ placedTowers.forEach(ts=>{
+   if(!ts.tower)return;
+   ts.tower.cooldown=(ts.tower.cooldown||0)-1/60;
+   if(ts.tower.cooldown<=0){
+     // Find nearest enemy in range
+     let tx=ts.x*86+64,ty=ts.y*66+54,trg=null,mindist=999,dmg=pick(TOWERS.filter(t=>t.key==ts.tower.key).map(t=>t.damage[0]+rand(0,t.damage[1]-t.damage[0])));
+     enemies.forEach(e=>{
+       let dist=Math.hypot(tx-e.px,ty-e.py);if(dist<mindist&&dist<pick(TOWERS.filter(t=>t.key==ts.tower.key).map(t=>t.range[1]))){mindist=dist;trg=e;}
+     });
+     if(trg){
+       let dx=(trg.px-tx),dy=(trg.py-ty),len=Math.hypot(dx,dy);dx/=len;dy/=len;
+       projectiles.push({ px:tx,py:ty,vx:.17*dx+.83*dx*rand(.95,1.05),vy:.17*dy+.83*dy*rand(.95,1.05),damage:dmg,speed:(pick(TOWERS.filter(t=>t.key==ts.tower.key).map(t=>t.rof[1]))),color:TOWERS.find(t=>t.key==ts.tower.key).color});
+       ts.tower.cooldown=pick(TOWERS.filter(t=>t.key==ts.tower.key).map(t=>t.rof[0]))+rand(0,.33);
+     }
+   }
+ });
+ // Next wave?
+ if(enemies.length==0 && (nextWaveAt==null||Date.now()>nextWaveAt)){ nextWave(); }
+}
+
+function enemyDefeated(e){
+ e.alive=false;
+ let reward=(ENEMY_TYPES[e.type]&&ENEMY_TYPES[e.type].reward)||150;
+ score+=Math.floor(reward*comboMult);
+ mana+=Math.floor(reward/10)+comboMult*3|0;
+ combo++;comboTimer=220-(comboMult*15|0);if(combo%6==5)comboMult++;
+ renderHUD();
+}
+
+function drawGame(){
+ // BG
+ ctx.fillStyle=(selectedLevel.background||"#222");ctx.fillRect(0,0,CANVAS_W,CANVAS_H);
+
+ // Draw vertical SolForge "core"
+ ctx.save();
+ ctx.globalAlpha=.94;
+ ctx.fillStyle="#35364d";
+ ctx.fillRect(CANVAS_W/2-34,CANVAS_H*.13,CANVAS_W*.17,CANVAS_H*.82);
+ ctx.fillStyle="#222";
+ ctx.fillRect(CANVAS_W/2-19,CANVAS_H*.13,CANVAS_W*.09,CANVAS_H*.82);
+ ctx.restore();
+
+ // Tower slots and towers
+ placedTowers.forEach(ts=>{
+   let x=ts.x*86+64,y=ts.y*66+54;
+   ctx.save();
+   ctx.globalAlpha=.92;if(ts.tower){ctx.shadowColor='#fff';ctx.shadowBlur=6;}
+   ctx.beginPath();ctx.arc(x,y,23-ts.y*.9,0,Math.PI*2);ctx.fillStyle="#233";ctx.fill();
+   ctx.strokeStyle="#444";ctx.lineWidth=3;ctx.stroke();
+   if(ts.tower){
+     let t=TOWERS.find(tw=>tw.key==ts.tower.key);ctx.fillStyle=t.color||'#ff983c';
+     ctx.beginPath();ctx.arc(x,y,13-ts.y*.32,Math.PI/6,(Math.PI*11)/6);ctx.fill();
+     ctx.font='bold 15px Arial';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#fff';
+     ctx.globalAlpha=.89;if(ts.tower.key=='forgecore'){ctx.globalAlpha=.97;}
+     ctx.fillText(t?t.name.charAt(0):'F',x,y+1);
+     ctx.globalAlpha=.96;
+   } else if(isPlacingTower && Math.abs(x-gameMouse.x)<32 && Math.abs(y-gameMouse.y)<32){
+     ctx.globalAlpha=.49+Math.sin(Date.now()/180)*.11;ctx.fillStyle='#fff';
+     ctx.beginPath();ctx.arc(x,y,18-ts.y*.32,Math.PI/4,-Math.PI/4);ctx.stroke();
+     ctx.globalAlpha=.92;
+   }
+   ctx.restore();
+ });
+
+ // Projectiles
+ projectiles.forEach(pr=>{
+   ctx.save();ctx.globalAlpha=.89;
+   ctx.beginPath();ctx.arc(pr.px,pr.py,7,0,Math.PI*2);ctx.fillStyle=pr.color||"#fff";ctx.fill();
+   ctx.restore();
+ });
+
+ // Enemies
+ enemies.forEach(e=>{
+   ctx.save();ctx.globalAlpha=.93+.04*Math.sin(Date.now()/120+e.px*.13);
+   ctx.beginPath();ctx.arc(e.px,e.py,(18+Math.sin(gameTimer*.12-e.x))*clamp(e.hp/e.maxhp,.6,.99),Math.PI*.94,-Math.PI*.94);ctx.fillStyle=e.color||"#888";
+   ctx.fill();
+   ctx.font='bold italic 13px Arial';ctx.textAlign='center';ctx.textBaseline='middle';
+   ctx.fillStyle='#ffd73f';ctx.globalAlpha=.92+.04*Math.cos(Date.now()/99-e.x*4);
+   ctx.fillText(Math.ceil(e.hp),e.px,e.py-18+(e.x%3));
+   ctx.restore();
+ });
+
+ // Draw Forge core health bar at bottom center
+ ctx.save();
+ let fx=CANVAS_W/2-48,CY=CANVAS_H-38,w=96,h=15,v=Math.max(0,(forgeHP/100));
+ ctx.globalAlpha=.97;ctx.lineWidth=3;ctx.strokeStyle="#ff983c";
+ ctx.strokeRect(fx,CY,w,h);ctx.fillStyle=v>.6?"#ff983c":v>.35?"#ffd73f":"#cf303b";
+ ctx.fillRect(fx,CY,w*v,h);ctx.restore();
+
+}
+
+function gameOver(){
+ fadeUI(`<div style="
+ position:absolute;width:${CANVAS_W}px;height:${CANVAS_H}px;text-align:center;padding-top:${CANVAS_H/4}px;">
+ <h2 style='color:#cf303b;'>GAME OVER</h2>
+ <div>Your Score:&nbsp;<b>${score}</b></div>
+ ${score>highScore?'<b>New High Score!</b>':''}
+ <br><button class='btn' onclick='showLevelSelect()'>Retry Level</button>
+ <button class='btn' onclick='showTitleScreen()'>Quit to Title</button></div>`);
+ gameState='levelselect';
+}
+
+// --- TOWER PLACEMENT TOOLBAR ---
+let gameMouse={x:-100,y:-100};
+gameCanvas.addEventListener('mousemove',evt=>{
+ let rect=gameCanvas.getBoundingClientRect();
+ gameMouse.x=(evt.clientX-rect.left)*(gameCanvas.width/rect.width);
+ gameMouse.y=(evt.clientY-rect.top)*(gameCanvas.height/rect.height);
+});
+gameCanvas.addEventListener('mouseleave',()=>{gameMouse={x:-100,y:-100};});
+document.addEventListener('keydown',(evt)=>{
+ if(gameState==='title'){showCharacterSelect();}
+ else if(gameState==='charselect'){showCharacterSelect();}
+ else if(gameState==='levelselect'){showLevelSelect();}
+ else if(gameState==='pause'){resumeGame();}
+ else if(gameState==='running'){
+   if(evt.code==='Escape')pauseGame();
+ }
+});
+
+uiLayer.addEventListener('pointerdown',function(evt){
+ if(gameState!=='running')return false;
+ // Toolbar click?
+ let rect=this.getBoundingClientRect();
+ let mx=(evt.clientX-rect.left)*(gameCanvas.width/rect.width), my=(evt.clientY-rect.top)*(gameCanvas.height/rect.height);
+ // If toolbar area (bottom)
+ if(my>CANVAS_H-54){
+   let i=Math.floor(mx/(CANVAS_W/TOWERS.length));
+   let t=TOWERS[i];
+   isPlacingTower=true;placingTowerType=t.key;
+ }
+});
+
+// Draw tower placement toolbar at bottom of screen (in uiLayer)
+setInterval(function(){
+ if(gameState==='running'){
+   let html='';
+   html+=`<div style="
+     position:absolute;width:${CANVAS_W}px;height:auto;left:auto;bottom:-14px;text-align:center;">`;
+   TOWERS.forEach((t,i)=>{
+     let x=i*(CANVAS_W/TOWERS.length)+28,y=CANVAS_H-36,lvlcol="#fff";
+     html+=`<button onclick="
+       isPlacingTower=true;placingTowerType='${t.key}';" 
+       class='btn' style="
+         font-size:.95em;padding:.23em .73em;background:${t.color};border-radius:8px;margin-right:.5em;border-width:3px;">
+         ${t.name}<br><span style='font-size:.89em;'>${t.cost[0]}M</span></button>`;
+   });
+   html+='</div>';
+   uiLayer.innerHTML+=html.substr(uiLayer.innerHTML.length?uiLayer.innerHTML.length:-99e9);//append only new part
+ }
+},450);
+
+//--- INIT ---
+showTitleScreen();
+
+window.onresize=function(){/*Responsive centering*/};
+
+</script>
+</body>
+</html>
