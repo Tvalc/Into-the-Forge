@@ -1,20 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=800, initial-scale=1.0">
-    <title>FORGEBORN: SOLSTICE BREAK</title>
-    <style>
-        body { margin: 0; padding: 0; background: #000; font-family: Arial, sans-serif; overflow: hidden; }
-        canvas { display: block; margin: 0 auto; background: #18121a;}
-        #gameContainer { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
-    </style>
+  <meta charset="UTF-8">
+  <title>FORGEBORN: SOLSTICE BREAK</title>
+  <meta name="viewport" content="width=800, initial-scale=1.0">
+  <style>
+    body { margin:0; background:#000; font-family:Arial,Segoe UI,sans-serif; overflow:hidden; }
+    #gameContainer { width:100vw; height:100vh; display:flex; justify-content:center; align-items:center; }
+    canvas { display:block; background:#18121a; box-shadow:0 0 32px #222; }
+  </style>
 </head>
 <body>
-    <div id="gameContainer">
-        <canvas id="gameCanvas" width="800" height="600"></canvas>
-    </div>
-
+<div id="gameContainer">
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+</div>
 <script>
 // === DATA ===
 const CHARACTERS = [
@@ -33,7 +32,7 @@ const LEVELS = [
 const SCENE_BACKGROUNDS = ["#283040","#21273A","#153855"];
 
 // === STATE ===
-let state = "title"; // title,charselect,levelselect,playing,lose
+let state = "title"; // title,charselect,levelselect,playing,win
 let selectedChar = 0;
 let selectedLevel = 0;
 let highScore = Number(localStorage.getItem("forgeborn_highscore") || "0");
@@ -45,14 +44,15 @@ let ctx = canvas.getContext('2d');
 let keys = {};
 window.addEventListener('keydown', e => {
   keys[e.key] = true;
+  // Only allow state change on keydown for these screens:
   if(state==="title") { state="charselect"; keys={}; }
 });
 window.addEventListener('keyup', e => { keys[e.key] = false; });
 
 let player = null;
 let enemies = [];
-let sceneY = 0;
 let playerInvuln = 0;
+let sceneY = 0;
 
 // === MAIN LOOP ===
 function loop() {
@@ -62,7 +62,7 @@ function loop() {
     case "charselect": drawCharSelect(); break;
     case "levelselect": drawLevelSelect(); break;
     case "playing": drawGame(); break;
-    case "lose": drawGameOver(); break;
+    case "win": drawWin(); break;
   }
   requestAnimationFrame(loop);
 }
@@ -131,6 +131,7 @@ function drawCharSelect() {
       ctx.fillText(CHARACTERS[i].desc,x,y+r+80);
     }
     ctx.restore();
+    // Navigation
     if(keys["ArrowLeft"]&&i===selectedChar&&i>0){selectedChar--;keys["ArrowLeft"]=false;}
     if(keys["ArrowRight"]&&i===selectedChar&&i<CHARACTERS.length-1){selectedChar++;keys["ArrowRight"]=false;}
   }
@@ -177,579 +178,201 @@ function drawLevelSelect() {
     if(keys["ArrowDown"]&&i===selectedLevel&&i<LEVELS.length-1){selectedLevel++;keys["ArrowDown"]=false;}
   }
 }
-// ==== GAMEPLAY IMPLEMENTATION ====
-// Add your gameplay code here (drawGame etc.)
 
+// ==== GAMEPLAY IMPLEMENTATION (vertical descent demo) ====
+function startGame() {
+   // Setup player and state for selected char/level
+   let c=CHARACTERS[selectedChar];
+   player = {
+     x:canvas.width/2,
+     y:80,
+     vx:0,
+     vy:0,
+     w:44,h:68,
+     col:c.color,
+     onGround:false,
+     hp:c.hp,
+     maxhp:c.hp,
+     atk:c.atk,
+     spd:c.spd,
+     facingRight:true,
+     canJump:true
+   };
+   score = 0;
+   combo = 0;
+   sceneY = 0;
+   enemies = [];
+   state = "playing";
+}
 function drawGame() {
-   // Simple placeholder gameplay loop for now
-   // Shows player as a block and controls with arrows
-   // You can expand this further according to GDD
-
    // BG
-   let bgCol = SCENE_BACKGROUNDS[selectedLevel%SCENE_BACKGROUNDS.length];
-   ctx.fillStyle = bgCol;
-   ctx.fillRect(0,0,canvas.width,canvas.height);
+   let bgCol=SCENE_BACKGROUNDS[selectedLevel%SCENE_BACKGROUNDS.length];
+   ctx.fillStyle=bgCol;
+   ctx.fillRect(0,sceneY*-1,canvas.width,canvas.height*2);
 
    // HUD
-   ctx.save();
-   ctx.globalAlpha=.98;
-   ctx.fillStyle="#18161e";
-   ctx.fillRect(8,8,784,38);
-   // Score
-   ctx.font="bold italic 22px Segoe UI";
-   ctx.fillStyle="#fff";
-   ctx.textAlign="left";
-   ctx.fillText("Score:",24,34);
-   ctx.font="bold italic 30px Segoe UI";
-   ctx.fillStyle="#f7e17c";
-   ctx.textAlign="left";
-   ctx.fillText(score.toLocaleString(),100,36);
-   // Health Bar
-   let maxHP=CHARACTERS[selectedChar].hp;
-   let hpW=220,hpH=18,hpX=200,hpY=20;
-   let hpPerc=Math.max(0,(player?player.hp:maxHP)/maxHP);
-   ctx.strokeStyle="#fff";ctx.lineWidth=2;ctx.strokeRect(hpX-4,hpY-4,hpW+8,hpH+8);
-   // HP BG
-   ctx.globalAlpha=.4;ctx.fillStyle="#930c22";
-   ctx.fillRect(hpX,hpY,hpW,hpH);ctx.globalAlpha=.95;
-   // HP Fill
-   let grad=ctx.createLinearGradient(hpX,hpY,hpX+hpW,hpY+hpH);
-   grad.addColorStop(0,"#ff3b22");grad.addColorStop(.5,"#ffb347");grad.addColorStop(1,"#fff7a9");
-   ctx.fillStyle=grad;
-   ctx.fillRect(hpX,hpY,hpW*hpPerc,hpH);
+   drawHUD();
 
-   // Combo (placeholder)
-   if(combo>1) {
-     ctx.font="bold italic 24px Segoe UI";
-     ctx.fillStyle="#bc3cff";
-     ctx.textAlign="right";
-     ctx.globalAlpha=.82+Math.random()*.15;
-     ctx.fillText(combo+"x COMBO!",790,35);
-     ctx.globalAlpha=1;
+   // Player controls
+   let moveX = (keys["ArrowLeft"]?-1:0)+(keys["ArrowRight"]?1:0);
+   player.x += moveX*player.spd;
+   player.x = Math.max(player.w/2, Math.min(canvas.width-player.w/2,player.x));
+   if((keys["ArrowUp"]||keys[" "]) && player.canJump && player.onGround){
+     player.vy=-13; player.onGround=false; player.canJump=false;
    }
-   // End HUD
+   if(!keys["ArrowUp"]&&!keys[" "]) player.canJump=true;
+
+   // Gravity and vertical movement:
+   player.vy += .7;
+   player.y += player.vy;
+   if(player.y > canvas.height-40) {
+     player.y = canvas.height-40; player.vy=0; player.onGround=true;
+   } else { player.onGround=false;}
+   // Scene scroll follows player downwards:
+   if(player.y > canvas.height/2 && sceneY < canvas.height) {
+     sceneY += (player.y-canvas.height/2)*.3;
+     player.y -= (player.y-canvas.height/2)*.3;
+   }
+
+   // Player render
+   ctx.save();
+   ctx.translate(player.x,player.y-sceneY);
+   ctx.globalAlpha=.93;
+   // Body
+   ctx.fillStyle=player.col; 
+   ctx.beginPath(); 
+   ctx.ellipse(0,15,player.w/2.3,player.h/2.1,0,0,Math.PI*2); 
+   ctx.closePath(); 
+   ctx.shadowBlur=18; 
+   ctx.shadowColor="#fff";
+   ctx.fill();
+   // Face
+   ctx.shadowBlur=0; 
+   ctx.strokeStyle="#fff";
+   ctx.lineWidth=3;
+   ctx.beginPath();
+   ctx.arc(0,-10,19,.2,.9*Math.PI,false); 
+   ctx.stroke();
+   // Eyes
+   ctx.beginPath();
+   ctx.arc(-7,-18,4,.1,.9*Math.PI,false); 
+   ctx.stroke();
+   ctx.beginPath();
+   ctx.arc(7,-18,4,.1,.9*Math.PI,false); 
+   ctx.stroke();
+   // Name
+   ctx.font="bold italic 16px Segoe UI";
+   ctx.textAlign="center";
+   ctx.textBaseline="bottom";
+   ctx.globalAlpha=.77;
+   ctx.fillStyle="#fff";
+   ctx.fillText(CHARACTERS[selectedChar].name+" ("+CHARACTERS[selectedChar].faction+")",0,-player.h/2-8);
+   // Health bar
+   let hpw=Math.max(44*(player.hp/player.maxhp),4);
+   ctx.globalAlpha=.9;
+   ctx.fillStyle="#ffb347";
+   ctx.fillRect(-22,-player.h/2-22,hpw,7);
    ctx.restore();
 
-   // Player
-   if(!player) player={
-       x:canvas.width/2-20,
-       y:500,
-       w:44,h:66,
-       vx:0,
-       vy:0,
-       hp:CHARACTERS[selectedChar].hp,
-       color:CHARACTERS[selectedChar].color,
-       onGround:false
-   };
-   // Controls (simple jump & move)
-   player.vx=0;
-   if(keys["ArrowLeft"]||keys["a"]) player.vx=-CHARACTERS[selectedChar].spd;
-   if(keys["ArrowRight"]||keys["d"]) player.vx=CHARACTERS[selectedChar].spd;
-
-   player.x+=player.vx;
-
-   // Gravity/jump
-   player.vy+=.55;
-   player.y+=player.vy;
-
-   // Ground collision
-   if(player.y+player.h>canvas.height-24){
-     player.y=canvas.height-24-player.h;player.vy=0;player.onGround=true;
-     if((keys["ArrowUp"]||keys["w"]||keys[" "]) && player.onGround) {
-       player.vy=-13-(CHARACTERS[selectedChar].spd*.28); player.onGround=false;
+   // Win condition (reaching bottom)
+   if(sceneY >= canvas.height-20) {
+     score += Math.floor(Math.random()*200)+800; // Award random score per run!
+     if(score > highScore) {
+       highScore = score; localStorage.setItem("forgeborn_highscore",score);
      }
-   }else{
-     player.onGround=false;
+     setTimeout(()=>{ state="win"; },500);
+     return;
    }
 
-   // Clamp to screen
-   player.x=Math.max(32,Math.min(canvas.width-32-player.w,player.x));
-
-   // Draw Player
-   ctx.save();
-     // Body
-     ctx.beginPath();
-     ctx.roundRect(player.x,player.y,player.w,player.h,10);
-     ctx.closePath();
-     ctx.globalAlpha=.99+(Math.sin(Date.now()/100)*.01);
-     if(playerInvuln>0) {ctx.globalAlpha*=.45+.25*Math.sin(Date.now()/60);}
-     ctx.shadowColor="#fff7a9";ctx.shadowBlur=7;
-     ctx.fillStyle=player.color; 
-     ctx.fill();
-
-     // Face/faction mark (simple)
-     let cx=player.x+player.w/2,cY=player.y+player.h/3;
-     ctx.beginPath();ctx.arc(cx,cY+4,12,Math.PI*2,false);ctx.closePath();
-     ctx.globalAlpha=.97;ctx.shadowBlur=3;ctx.shadowColor="#fff7a9";
-     switch(CHARACTERS[selectedChar].faction){
-         case "Tempys":ctx.fillStyle="#ffd67c";break;
-         case "Alloyin":ctx.fillStyle="#7cf3ff";break;
-         case "Uterra":ctx.fillStyle="#baff93";break;
-         case "Nekrium":ctx.fillStyle="#bc3cff";break;
-         default:ctx.fillStyle="#fff";
-     }
-     ctx.globalAlpha=.88;if(playerInvuln>0)ctx.globalAlpha*=.5+.5*Math.sin(Date.now()/60);
-     ctx.fill();
-     // Eyes (simple)
-     if(playerInvuln<=0){
-        ctx.globalAlpha=.88;ctx.beginPath();
-        ctx.arc(cx-5,cY+5.5,2.5,.1,.9*Math.PI); 
-        ctx.arc(cx+5,cY+5.5,2.5,.1,.9*Math.PI); 
-        ctx.closePath(); 
-        ctx.globalAlpha=.97; 
-        switch(CHARACTERS[selectedChar].faction){
-            case "Tempys":ctx.fillStyle="#ff8000";break;
-            default:ctx.fillStyle="#222";
-        }
-        ctx.fill();
-     }
-     // HP under bar
-     if(player.hp<CHARACTERS[selectedChar].hp){
-        let pct=(player.hp/CHARACTERS[selectedChar].hp);
-        let pxw=Math.round(player.w*pct);
-        let py=player.y+player.h+7,pw=Math.max(8,pxw),ph=7;
-        let grad=ctx.createLinearGradient(player.x,py,player.x+pw,pw);
-        grad.addColorStop(0,"#bb1024");grad.addColorStop(.6,"#feae53");grad.addColorStop(1,"#ffeaa9");
-        ctx.globalAlpha=.93; 
-        if(pct>.3) grad.addColorStop(.9,"#77ffad");
-        else grad.addColorStop(.9,"#bc3cff");
-        ctx.fillStyle=grad;
-        if(pct>0) 
-          ctx.roundRect(player.x+(player.w-pw)/2-1.5,py,pw+3*Math.random(),ph,.7*ph); 
-        else 
-          { /* Dead */ }
-        ctx.globalAlpha=.99;
-        ctx.fill();
-     }
-     // Name
-     ctx.font="bold italic 18px Segoe UI";
-     if(playerInvuln<=0)
-         {ctx.globalAlpha=.87;ctx.shadowBlur=6;}
-     else{ctx.globalAlpha=.47+.55*Math.abs(Math.sin(Date.now()/90));}
-     // Faction frame
-     let frameC="#fff7a9";
-     switch(CHARACTERS[selectedChar].faction){case "Tempys":frameC="#ffc76c";break;case "Alloyin":frameC="#85e8fd";break;case "Uterra":frameC="#baff93";break;}
-     ctx.strokeStyle=frameC; 
-     ctx.lineWidth=3+(Math.sin(Date.now()/510)*2);
-     let arcR=Math.max(player.w/1.6-player.hp*.03-playerInvuln*.6,28)
-     if(player.hp>10) {
-       if(playerInvuln>0) { 
-           for(let j=1;j<=3;j++){
-               let offset=Math.sin(Date.now()/80+j)*4+j*8;
-               let ang=Math.PI*2*(j*.28+.09)+Math.cos(Date.now()/90)*.05*(j+.6),arcRj=arcR+j*3.5-playerInvuln*.5+j*Math.random()*2.5
-               let cxj=cx+(arcRj)*Math.cos(ang),cyj=cY+(arcRj)*Math.sin(ang)-7*Math.random()
-               let ccol=["#fff7a9","#bc3cff","#930c22"];
-               ctx.beginPath(); 
-               for(let k=-2;k<=2;k++){
-                   let angk=(ang+k*0.13),ax=cx+(arcRj+offset)*Math.cos(angk),ay=cY+(arcRj+offset)*Math.sin(angk)-offset*.25*k
-                   if(k== -2) { 
-                       if(j==1) 
-                           { 
-                               cxj=ax;cyj=ay;} 
-                       else {}
-                   }
-                   else {}
-                   if(k== -2) 
-                       { 
-                           cxj=ax;cyj=ay;} 
-                   else {}
-                   if(k== -2)
-                       { cxj=ax;cyj=ay;}
-                   else {}
-                   if(k== -2)
-                       { cxj=ax;cyj=ay;}
-                   else {}
-                   if(k== -2)
-                       { cxj=ax;cyj=ay;}
-                   else {}
-                   if(k== -2)
-                       { cxj=ax;cyj=ay;}
-                   else {}
-                   if(k== -2)
-                       { cxj=ax;cyj=ay;}
-                   else {}
-                   if(k== -2)
-                       { cxj=ax;cyj=ay;}
-                   else {}
-               }
-               for(let k=-2;k<=2;k++){
-                 let angk=(ang+k*0.13),ax=cx+(arcRj+offset)*Math.cos(angk),ay=cY+(arcRj+offset)*Math.sin(angk)-offset*.25*k
-                 if(k==-2) {cxj=ax;cyj=ay;} 
-                 else {}
-                 if(k==-2) {cxj=ax;cyj=ay;} 
-                 else {}
-                 if(k==-2) {cxj=ax;cyj=ay;} 
-                 else {}
-                 if(k==-2) {cxj=ax;cyj=ay;} 
-                 else {}
-                 if(k==-2) {cxj=ax;cyj=ay;} 
-                 else {}
-               }
-               for(let k=-2;k<=2;k++){
-                 let angk=(ang+k*0.13),ax=cx+(arcRj+offset)*Math.cos(angk),ay=cY+(arcRj+offset)*Math.sin(angk)-offset*.25*k
-                 if(k==-2) {cxj=ax;cyj=ay;} 
-                 else {}
-               }
-               for(let k=-2;k<=2;k++){
-                 let angk=(ang+k*0.13),ax=cx+(arcRj+offset)*Math.cos(angk),ay=cY+(arcRj+offset)*Math.sin(angk)-offset*.25*k
-                 if(k==-2) {cxj=ax;cyj=ay;} 
-                 else {}
-               }
-               for(let k=-2;k<=2;k++){
-                 let angk=(ang+k*0.13),ax=cx+(arcRj+offset)*Math.cos(angk),ay=cY+(arcRj+offset)*Math.sin(angk)-offset*.25*k
-                 if(k==-2) {cxj=ax;cyj=ay;} 
-                 else {}
-               }
-           }
-       }else{ 
-           for(let j=1;j<=3;j++){
-               let offset=Math.sin(Date.now()/80+j)*4+j*8,jcol=["#fff7a9","#bc3cff","#930c22"][j%3];
-               let ang=Math.PI*2*(j*.28+.09)+Math.cos(Date.now()/90)*.05*(j+.6),arcRj=arcR+j*3.5+j*Math.random()*1.5
-               let cxj=cx+(arcRj)*Math.cos(ang),cyj=cY+(arcRj)*Math.sin(ang)-7*Math.random()
-               for(let k=-2;k<=2;k++){
-                 let angk=(ang+k*0.13),ax=cx+(arcRj+offset)*Math.cos(angk),ay=cY+(arcRj+offset)*Math.sin(angk)-offset*.25*k
-                 if(k==-2) {cxj=ax;cyj=ay;} 
-                 else {}
-               }
-           }
-       }
-      }
-      // Name text
-      let tx=cx-(player.name?player.name.length*4.5:10),ty=cY-player.h*.75-10;
-      let nmTxt=(CHARACTERS[selectedChar]?CHARACTERS[selectedChar].name:"");
-      if(nmTxt.length>1){
-        for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++){
-          if(i||j){ctx.globalAlpha=.15;ctx.font="italic bold 18px Segoe UI";}
-          else{ctx.globalAlpha=.99;}
-          let dx=i*1.5+j*1.5;
-          let dy=i*1.5-j*1.5;
-          let shcol=["#fff","#bc3cff","#930c22"][selectedChar%3];
-          shcol=["#222","#aaa","#111"][selectedChar%3];
-          shcol=["#18161e","#bc3cff","#930c22"][selectedChar%3];
-          shcol=["#333","#bc3cff","#930c22"][selectedChar%3];
-          shcol=["#18161e","#bc3cff","#930c22"];
-          shcol=["#18161e"];
-          shcol=["#fff"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          shcol=["#18161e"];
-          
-        }
-        // "Main" name text
-        ctx.globalAlpha=.98;
-        switch(selectedChar){
-            case 0:case 4:case 5:
-                ctx.shadowColor='#ffd780';break;
-            case 1:
-                ctx.shadowColor='#9cfbe9';break;
-            case 2:
-                ctx.shadowColor='#dcbafe';break;
-            case 3:
-                ctx.shadowColor='#badeff';break;
-            default:
-                break;
-        }
-        for(let j=-1;j<=1;j++)
-         for(let k=-1;k<=1;k++){
-            if(j||k){ 
-                continue;}
-            else{ 
-                continue;}
-         }
-         for(let j=-1;j<=1;j++)
-         for(let k=-1;k<=1;k++){
-            if(j||k){ 
-                continue;}
-            else{ 
-                continue;}
-         }
-         for(let j=-1;j<=1;j++)
-         for(let k=-1;k<=1;k++){
-            if(j||k){ 
-                continue;}
-            else{ 
-                continue;}
-         }
-         for(let j=-1;j<=1;j++)
-         for(let k=-1;k<=1;k++){
-            if(j||k){ 
-                continue;}
-            else{ 
-                continue;}
-         }
-
-        // Main name text drawn once:
-        let nmCol='#fff';
-        switch(selectedChar){
-            case 0:nmCol='#ffd780';break;
-            case 4:nmCol='#ffd780';break;
-            case 5:nmCol='#ffd780';break;
-            case 1:nmCol='#9cfbe9';break;
-            case 2:nmCol='#dcbafe';break;
-            case 3:nmCol='#badeff';break;
-            default:nmCol='#fff';
-        }
-        ctx.font="italic bold "+18+"px Segoe UI";
-        for(let i=-1;i<=1;i++)
-         for(let j=-1;j<=1;j++){
-           tx+=i*1.5+j*1.5;ty+=i*1.5-j*1.5;}
-        tx=cx-(nmTxt.length*4.5);ty=cY-player.h*.75-10;
-
-        // Main text
-        for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++){
-           if(i||j){continue;}else{continue;}
-         }
-         for(let i=-1;i<=1;i++)for(let j=-1;j<=1;j++){
-           if(i||j){continue;}else{continue;}
-         }
-
-        // Main text:
-        let ntxt=$(nmTxt||"").toString();
-        ntxt = nmTxt || "";
-        ntxt = ntxt.toString();
-        ntxt = ntxt.replace(/[^\w ]/g,'');
-        ntxt = ntxt.replace(/[_\-]/g,' ');
-        ntxt = ntxt.trim();
-        ntxt = ntxt.charAt(0).toUpperCase() + ntxt.slice(1).toLowerCase();
-
-        nmTxt = ntxt;
-
-        
-        tx=cx-(nmTxt.length*4.5);ty=cY-player.h*.75-10;
-
-        nmTxt && nmTxt.length && (
-            (()=>{
-             try{
-              return (
-                 (()=>{
-                    return (
-                        (()=>{try{
-                            return (()=>{
-                                return (
-                                  (()=>{
-                                    return (
-                                       (()=>{
-                                         return (
-                                            (()=>{
-                                             return (
-                                               (()=>{
-                                                 return (
-                                                   (()=>{
-                                                     return (
-                                                       (()=>{
-                                                         return (
-                                                           (()=>{
-                                                             return (
-                                                               (()=>{try{
-                                                                  return (
-                                                                       (()=>{
-                                                                         return (
-                                                                            (()=>{
-                                                                               return (
-                                                                                  (()=>{try{
-                                                                                     return (()=>{
-                                                                                        try{
-                                                                                           return (()=>{
-                                                                                              try{
-                                                                                                 return (()=>{
-                                                                                                    try{
-                                                                                                       return (()=>{
-                                                                                                          try{
-                                                                                                             return (
-                                                                                                                (()=>{
-                                                                                                                  try{
-                                                                                                                     return (()=>{
-                                                                                                                        try{
-                                                                                                                           return (
-                                                                                                                             (()=>{
-                                                                                                                               try{
-                                                                                                                                 return (
-                                                                                                                                       nmTxt && nmTxt.length && (function(){
-                                                                                                                                           try{
-                                                                                                                                             return (
-                                                                                                                                              nmTxt && nmTxt.length && (()=>{try{
-                                                                                                                                                  return (
-                                                                                                                                                    (()=>{try{
-                                                                                                                                                        return (
-                                                                                                                                                          nmTxt && nmTxt.length && (()=>{try{
-                                                                                                                                                              return (
-                                                                                                                                                                nmTxt && nmTxt.length && (()=>{try{
-                                                                                                                                                                    return (
-                                                                                                                                                                        nmTxt && nmTxt.length &&
-                                                                                                                                                                        (()=>{try{
-                                                                                                                                                                            return (
-                                                                                                                                                                                nmTxt && nmTxt.length &&
-                                                                                                                                                                                (
-                                                                                                                                                                                  nmTxt && (
-                                                                                                                                                                                    (()=>{try{
-                                                                                                                                                                                      return (
-                                                                                                                                                                                        nmTxt && nmTxt.length &&
-                                                                                                                                                                                        (()=>{try{
-                                                                                                                                                                                          return (
-                                                                                                                                                                                            (()=>{try{
-                                                                                                                                                                                              return (
-                                                                                                                                                                                                nmTxt && nmTxt.length &&
-                                                                                                                                                                                                (()=>{try{
-                                                                                                                                                                                                    return (
-                                                                                                                                                                                                        nmTxt && nmTxt.length &&
-                                                                                                                                                                                                        (()=>{try{return(
-                                                                                                                                                                                                            nmTxt && nmTxt.length &&
-                                                                                                                                                                                                            (()=>{try{return(
-                                                                                                                                                                                                                nmTxt && nmTxt.length &&
-                                                                                                                                                                                                                (()=>{try{return(
-                                                                                                                                                                                                                    nmTxt && nmTxt.length &&
-                                                                                                                                                                                                                    (()=>{try{return(
-                                                                                                                                                                                                                        nmTxt && nmTxt.length &&
-                                                                                                                                                                                                                        (()=>{try{return(
-                                                                                                                                                                                                                            nmTxt && nmTxt.length &&
-                                                                                                                                                                                                                            (()=>{try{return(
-                                                                                                                                                                                                                                nmTxt &&nmTxt.length&&(function(){
-                                                                                                                                                                                                                                    try{
-                                                                                                                                                                                                                                        return(
-                                                                                                                                                                                                                                            function(){
-                                                                                                                                                                                                                                                try{
-                                                                                                                                                                                                                                                    return(
-                                                                                                                                                                                                                                                        function(){return!void(ctx && (function(){
-                                            // Draw main text!
-                                            {
-                                              try{
-                                                for(var i_=-1;i_<=1;i_++)for(var j_=-1;j_<=1;j_++){if(i_||j_){continue;}else{}
-                                                }}}catch(_){}}
-                                            })())}catch(_){}}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                            )()}catch(_){}
-                                         })()
-                                       );
-                                     })()
-                                   );
-                                 })()
-                               );
-                             })()
-                           );
-                         })()
-                       );
-                     })()
-                   );
-                 })()
-               );
-             })()
-           );
-         })()
-       );
-      })()
-     );
-      } catch(_){}}
-      })()
-      )
-      })()
-      )
-      })()
-      )
-      })()
-      )
-      })()
-      )
-      })()
-      )
-      })()
-      )
-      })()
-      )
-      })()
-      )
-      })()
-      )
-      })()
-      )
-      })()
-      )
-      })()
-      )
-      })()
-      )
-      })()
-      )
-      })()
-      )
-      })()
-      )
-      })()
-      )
-      })()
-      )
-      })()
-      )
-      ;
 }
+
+function drawHUD() {
+ // Top Bar
+ let barH =36;
+ // BG
+ let grad=ctx.createLinearGradient(0,0,canvas.width*1.5,barH);
+ grad.addColorStop(0,"#262335");grad.addColorStop(1,"#191723");
+ ctx.globalAlpha=.98;ctx.fillStyle=grad;ctx.fillRect(0,0,canvas.width*1.5,barH);
+ // Score
+ ctx.font="bold italic 22px Segoe UI";ctx.textAlign="left";ctx.globalAlpha=1.00;ctx.fillStyle="#ffc447";
+ ctx.fillText("SCORE "+score.toLocaleString(),24,26);
+ // Health
+ let hpPct = Math.max(0,(player.hp/player.maxhp));
+ let barW = clamp(hpPct*140+4,4,144);
+ let hpColor = hpPct>.5?"#18d860":hpPct>.25?"#ffb347":"#ff2147";
+ // Health bar frame
+ let yb=12;
+ ctx.strokeStyle="#fff";ctx.lineWidth=3;ctx.globalAlpha=.75; 
+ ctx.strokeRect(canvas.width-170,yb-4,144+6,barH-10);
+ // Health fill
+ ctx.globalAlpha=.92;
+ ctx.fillStyle=hpColor; 
+ ctx.fillRect(canvas.width-166,yb-1.5,barW,(barH-15));
+ // Label
+ ctx.font="bold italic 19px Segoe UI";
+ ctx.globalAlpha=.95; 
+ ctx.textAlign="right";
+ ctx.fillStyle="#fff";
+ ctx.fillText("HEALTH",canvas.width-24,yb+19);
+
+}
+
+function drawWin() {
+   // Level Complete Screen
+   let c=CHARACTERS[selectedChar], l=LEVELS[selectedLevel];
+   let boxw=424,bh=260,x=(canvas.width-boxw)/2,y=(canvas.height-bh)/2;
+   // BG panel
+   ctx.globalAlpha=.97; 
+   let grad=ctx.createLinearGradient(x,y,x+boxw,y+bh);
+   grad.addColorStop(0,"#232e35");
+   grad.addColorStop(1,"#191723");
+   ctx.fillStyle=grad; 
+   roundRect(x,y,boxw,bh,22,true,false);
+
+   // Texts
+   let yy=y+44;
+   ctx.globalAlpha=1.00; 
+   ctx.font="bold italic 42px Segoe UI";
+   ctx.textAlign="center"; 
+   ctx.fillStyle="#ffc447";
+   ctx.fillText("LEVEL COMPLETE!",canvas.width/2,y+60);
+
+   yy+=38;
+   drawStatLine("Level:",l.name,(yy+=32));
+   drawStatLine("Character:",c.name+" ("+c.faction+")",(yy+=32));
+   drawStatLine("Run Score:",score.toLocaleString(),(yy+=32));
+   drawStatLine("High Score:",highScore.toLocaleString(),(yy+=32));
+   
+   // Continue button
+   drawButton(canvas.width/2-70,y+bh-54,140,40,"Continue",true);
+
+   if(keys["Enter"]||keys[" "]) { state="title"; keys={}; }
+}
+function roundRect(x,y,w,h,r,f,s){
+ if(f){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath();ctx.fill();}
+ if(s){ctx.stroke();}
+}
+function drawStatLine(label,val,y){
+ let xl=canvas.width/2-90,xr=canvas.width/2+90;
+ ctx.font="22px Segoe UI"; 
+ // Label left
+ ctx.textAlign="right"; 
+ ctx.globalAlpha=.86; 
+ ctx.fillStyle="#fff";
+ ctx.fillText(label,xl,y);
+ // Value right
+ ctx.textAlign="left";
+ let col=/score/i.test(label)? "#ffc447":"#f7e17c";
+ if(/character/i.test(label)) col="#bc3cff";
+ if(/level/i.test(label)) col="#18d860";
+ ctx.globalAlpha=.97;
+ ctx.fillStyle=col;
+ ctx.font="bold italic 23px Segoe UI";
+ ctx.fillText(val,xr,y);
+}
+
+// --- Utilities ---
+function clamp(x,a,b){ return Math.max(a,Math.min(x,b)); }
 
 </script>
 </body>
