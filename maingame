@@ -4,54 +4,49 @@
   <meta charset="UTF-8">
   <title>FORGEBORN: SOLSTICE BREAK</title>
   <style>
-    body { margin:0; background: #000; }
-    canvas { display:block; margin:0 auto; background:#18151c; }
-    #gameContainer { width:100vw; height:100vh; display:flex; justify-content:center; align-items:center; }
+    html,body{margin:0;padding:0;background:#18151c;height:100%;width:100%;}
+    #gameCanvas{display:block;margin:0 auto;background:#18151c;}
+    body{overflow:hidden;}
+    ::selection {background:#ffb347;color:#18151c;}
   </style>
 </head>
 <body>
-<div id="gameContainer">
-  <canvas id="gameCanvas" width="800" height="600"></canvas>
-</div>
+<canvas id="gameCanvas" width="800" height="600"></canvas>
 <script>
-// ====== GAME DATA & DRAWING FUNCTIONS ======
-
-const CHARACTERS = [
-  { name: "Korok", faction: "Tempys", unlockedAt: 0, color: "#ff7200" },
-  { name: "Oros", faction: "Uterra", unlockedAt: 10000, color: "#18d860" },
-  { name: "Cercee", faction: "Nekrium", unlockedAt: 25000, color: "#bc3cff" },
-  { name: "Ironbeard", faction: "Alloyin", unlockedAt: 50000, color: "#88c6ff" },
-  { name: "Ignir", faction: "Tempys", unlockedAt: 100000, color: "#ff1a1a" },
-  { name: "Voss", faction: "Nekrium", unlockedAt: 200000, color: "#9300c2" }
+// ========== DATA ==========
+const CHARACTERS=[
+  {name:"Korok",faction:"Tempys",unlockedAt:0,color:"#ff7200"},
+  {name:"Oros",faction:"Uterra",unlockedAt:10000,color:"#18d860"},
+  {name:"Cercee",faction:"Nekrium",unlockedAt:25000,color:"#bc3cff"},
+  {name:"Ironbeard",faction:"Alloyin",unlockedAt:50000,color:"#88c6ff"},
+  {name:"Ignir",faction:"Tempys",unlockedAt:100000,color:"#ff1a1a"},
+  {name:"Voss",faction:"Nekrium",unlockedAt:200000,color:"#9300c2"}
 ];
-const LEVELS = [
-  { name:"The Frozen Wastes", unlockedAt:0 },
-  { name:"The Rootrealms", unlockedAt:25000 },
-  { name:"Brightsteel City", unlockedAt:50000 }
+const LEVELS=[
+  {name:"The Frozen Wastes",unlockedAt:0},
+  {name:"The Rootrealms",unlockedAt:25000},
+  {name:"Brightsteel City",unlockedAt:50000}
 ];
-const SCENE_BACKGROUNDS = ["#2e3a5a", "#273548", "#222831"];
-
-let gameState = "title";
-let highScore = Number(localStorage.getItem("forgeborn_highscore") || "0");
-let currentScore = 0;
-let selectedCharIdx = 0;
-let selectedLevelIdx = 0;
-
-let player = null;
-let playerHealth = 100;
-let inGameSceneY = 0;
-
-const keys = {};
-window.addEventListener('keydown', e => { keys[e.code]=true; });
-window.addEventListener('keyup',   e => { keys[e.code]=false; });
-
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
-
+const SCENE_BACKGROUNDS=["#2e3a5a","#273548","#222831"];
+// ========== STATE ==========
+let gameState="title";
+let highScore=Number(localStorage.getItem("forgeborn_highscore")||"0");
+let currentScore=0;
+let selectedCharIdx=0;
+let selectedLevelIdx=0;
+let player=null,playerHealth=100,inGameSceneY=0,enemies=[],comboCount=0,comboTimer=null;
+// ========== INPUT ==========
+const keys={};
+window.addEventListener('keydown',e=>{keys[e.code]=true;if(gameState==="title"||gameState==="highscore"){gameState="charselect";}});
+window.addEventListener('keyup',e=>{keys[e.code]=false;});
+// ========== CANVAS ==========
+const canvas=document.getElementById("gameCanvas");
+const ctx=canvas.getContext("2d");
+// ========== UTILS ==========
 function drawButton(x,y,w,h,text,isActive){
   ctx.save();
-  ctx.globalAlpha = isActive ? 1 : .5;
-  ctx.fillStyle = isActive ? "#ff9200" : "#555";
+  ctx.globalAlpha=isActive?1:.5;
+  ctx.fillStyle=isActive?"#ff9200":"#555";
   ctx.fillRect(x,y,w,h);
   ctx.strokeStyle="#fff";
   ctx.lineWidth=2;
@@ -63,132 +58,439 @@ function drawButton(x,y,w,h,text,isActive){
   ctx.fillText(text,x+w/2,y+h/2);
   ctx.restore();
 }
-function getUnlockedChars(){ return CHARACTERS.filter(c=>highScore>=c.unlockedAt); }
-function getUnlockedLevels(){ return LEVELS.filter(l=>highScore>=l.unlockedAt); }
-
+function getUnlockedChars(){return CHARACTERS.filter(c=>highScore>=c.unlockedAt);}
+function getUnlockedLevels(){return LEVELS.filter(l=>highScore>=l.unlockedAt);}
+// ========== TITLE ==========
 function drawTitle(){
-    let grad=ctx.createLinearGradient(0,0,0,canvas.height);
-    grad.addColorStop(0,"#191723");
-    grad.addColorStop(1,"#502a11");
-    ctx.fillStyle=grad;ctx.fillRect(0,0,canvas.width,canvas.height);
-
-    ctx.save();
-    let t=Date.now()/800;
-    ctx.translate(canvas.width/2,canvas.height/2-90 + Math.sin(t)*8);
-    ctx.fillStyle="#aaa";ctx.fillRect(-32,-160,64,220);
-    ctx.strokeStyle="#ffb347";ctx.lineWidth=6;
-    ctx.beginPath();ctx.arc(0,-160,32,Math.PI*2,false);ctx.stroke();
-    ctx.globalAlpha=0.18+Math.abs(Math.sin(t*1.3))*0.12;
-    ctx.fillStyle="#9d2cff";ctx.beginPath();
-    ctx.arc(18,-140+Math.cos(t)*16,16+Math.sin(t*1.9)*4,0,Math.PI*2);ctx.fill();
-    ctx.globalAlpha=1;ctx.restore();
-
-    ctx.fillStyle="#ffb347";
-    ctx.font="bold 46px Segoe UI";
-    ctx.textAlign="center";
-    ctx.shadowColor="#602f07";ctx.shadowBlur=14;
-    ctx.fillText("FORGEBORN:",canvas.width/2,110);
+  let grad=ctx.createLinearGradient(0,0,0,canvas.height);
+  grad.addColorStop(0,"#191723");grad.addColorStop(1,"#502a11");
+  ctx.fillStyle=grad;ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.save();
+  let t=Date.now()/800;
+  ctx.translate(canvas.width/2,canvas.height/2-90+Math.sin(t)*8);
+  ctx.fillStyle="#aaa";ctx.fillRect(-32,-160,64,220);
+  ctx.strokeStyle="#ffb347";ctx.lineWidth=6;
+  ctx.beginPath();ctx.arc(0,-160,32,Math.PI*2,false);ctx.stroke();
+  ctx.globalAlpha=0.18+Math.abs(Math.sin(t*1.3))*0.12;
+  ctx.fillStyle="#9d2cff";ctx.beginPath();
+  ctx.arc(18,-140+Math.cos(t)*16,16+Math.sin(t*1.9)*4,0,Math.PI*2);ctx.fill();
+  ctx.globalAlpha=1;ctx.restore();
+  ctx.fillStyle="#ffb347";
+  ctx.font="bold 46px Segoe UI";
+  ctx.textAlign="center";
+  ctx.shadowColor="#602f07";ctx.shadowBlur=14;
+  ctx.fillText("FORGEBORN:",canvas.width/2,110);
+  ctx.fillStyle="#fff";
+  ctx.font="bold italic 36px Segoe UI";
+  ctx.shadowBlur=8;ctx.shadowColor="#bc3cff";
+  ctx.fillText("SOLSTICE BREAK",canvas.width/2,160);
+  ctx.shadowBlur=0;
+  ctx.font="bold 26px Segoe UI";ctx.fillStyle="#f7e17c";
+  ctx.fillText("High Score: "+highScore.toLocaleString(),canvas.width/2,260);
+  let blink=(Math.floor(Date.now()/500)%2)==0;
+  if(blink){
+    ctx.font="bold italic 28px Segoe UI";
     ctx.fillStyle="#fff";
-    ctx.font="bold italic 36px Segoe UI";
-    ctx.shadowBlur=8;ctx.shadowColor="#bc3cff";
-    ctx.fillText("SOLSTICE BREAK",canvas.width/2,160);
-    ctx.shadowBlur=0;
-
-    ctx.font="bold 26px Segoe UI";ctx.fillStyle="#f7e17c";
-    ctx.fillText("High Score: "+highScore.toLocaleString(),canvas.width/2,260);
-
-    let blink=(Math.floor(Date.now()/500)%2)==0;
-    if(blink){
-        ctx.font="bold italic 28px Segoe UI";
-        ctx.fillStyle="#fff";
-        ctx.fillText("[ Press Any Button to Start ]",canvas.width/2,340);
-    }
+    ctx.fillText("[ Press Any Button to Start ]",canvas.width/2,340);
+  }
 }
-
+// ========== CHARACTER SELECT ==========
 function drawCharSelect(){
-    ctx.fillStyle="#262335";ctx.fillRect(0,0,canvas.width,canvas.height);
-    ctx.font="bold 34px Segoe UI";
-    ctx.fillStyle="#ffb347";
-    ctx.textAlign="center";
-    ctx.fillText("Choose Your Forgeborn",canvas.width/2,64);
-
-    let chars=CHARACTERS;
-    let spacing=110,x0=canvas.width/2-(chars.length-1)*spacing/2;
-
-    for(let i=0;i<chars.length;++i){
-        let x=x0+i*spacing,y=180,r=48;
-        let isUnlocked=highScore>=chars[i].unlockedAt;
-        ctx.save();
-        ctx.beginPath();ctx.arc(x,y,r+8,0,Math.PI*2);ctx.closePath();
-        ctx.globalAlpha=isUnlocked?1:.15;
-        ctx.strokeStyle="#fff";ctx.lineWidth=(i==selectedCharIdx)?7:3;ctx.stroke();
-        ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.closePath();
-        ctx.fillStyle=chars[i].color;ctx.globalAlpha=isUnlocked?.85:.19;ctx.fill();
-        if(!isUnlocked){
-            ctx.globalAlpha=.5;
-            ctx.fillStyle="#222";
-            ctx.beginPath();ctx.arc(x,y,r-4,0,Math.PI*2);ctx.closePath();ctx.fill();
-        }
-        ctx.globalAlpha=1;ctx.font="bold italic 38px Segoe UI";
-        ctx.fillStyle="#fff";ctx.textAlign="center";
-        ctx.fillText(chars[i].name[0],x,y+7);
-
-        if(!isUnlocked){
-            ctx.font="16px Segoe UI";ctx.fillStyle="#ffb347";
-            ctx.fillText("Unlocks @ "+chars[i].unlockedAt,x,y+r+24);
-        }
-        if(i==selectedCharIdx){
-            ctx.font="italic bold 20px Segoe UI";ctx.fillStyle="#fff";
-            ctx.fillText(chars[i].name+" ("+chars[i].faction+")",x,y+r+44);
-            if(isUnlocked){
-                drawButton(x-48,y+r+56,96,36,"SELECT",true);
-            }
-        }
-        ctx.restore();
+  ctx.fillStyle="#262335";ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.font="bold 34px Segoe UI";
+  ctx.fillStyle="#ffb347";
+  ctx.textAlign="center";
+  ctx.fillText("Choose Your Forgeborn",canvas.width/2,64);
+  let chars=CHARACTERS;
+  let spacing=110,x0=canvas.width/2-(chars.length-1)*spacing/2;
+  for(let i=0;i<chars.length;++i){
+    let x=x0+i*spacing,y=180,r=48;
+    let isUnlocked=highScore>=chars[i].unlockedAt;
+    ctx.save();
+    ctx.beginPath();ctx.arc(x,y,r+8,0,Math.PI*2);ctx.closePath();
+    ctx.globalAlpha=isUnlocked?1:.15;
+    ctx.strokeStyle="#fff";ctx.lineWidth=(i==selectedCharIdx)?7:3;ctx.stroke();
+    ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.closePath();
+    ctx.fillStyle=chars[i].color;ctx.globalAlpha=isUnlocked?.85:.19;ctx.fill();
+    if(!isUnlocked){
+      ctx.globalAlpha=.5;
+      ctx.fillStyle="#222";
+      ctx.beginPath();ctx.arc(x,y,r-4,0,Math.PI*2);ctx.closePath();ctx.fill();
     }
+    ctx.globalAlpha=1;ctx.font="bold italic 38px Segoe UI";
+    ctx.fillStyle="#fff";ctx.textAlign="center";
+    ctx.fillText(chars[i].name[0],x,y+7);
+    if(!isUnlocked){
+      ctx.font="16px Segoe UI";ctx.fillStyle="#ffb347";
+      ctx.fillText("Unlocks @ "+chars[i].unlockedAt,x,y+r+24);
+    }
+    if(i==selectedCharIdx){
+      ctx.font="italic bold 20px Segoe UI";ctx.fillStyle="#fff";
+      ctx.fillText(chars[i].name+" ("+chars[i].faction+")",x,y+r+44);
+      if(isUnlocked){
+        drawButton(x-48,y+r+56,96,36,"SELECT",true);
+      }
+    }
+    ctx.restore();
+  }
 }
-
+// ========== LEVEL SELECT ==========
 function drawLevelSelect(){
-    ctx.fillStyle="#232e35";ctx.fillRect(0,0,canvas.width,canvas.height);
-    ctx.font="bold 34px Segoe UI";
-    ctx.fillStyle="#ffb347";
-    ctx.textAlign="center";
-    ctx.fillText("Select Level",canvas.width/2,64);
-
-    let levels=LEVELS;
-    let spacing=70,y0=140;
-
-    for(let i=0;i<levels.length;++i){
-        let y=y0+i*spacing,x=canvas.width/2-120,w=240,h=52;
-        let isUnlocked=highScore>=levels[i].unlockedAt;
-
-        ctx.save();ctx.globalAlpha=isUnlocked?1:.25;
-        ctx.strokeStyle=isUnlocked?"#f7e17c":"#555";ctx.lineWidth=(i==selectedLevelIdx)?4:2;
-        ctx.strokeRect(x,y,w,h);
-        if(isUnlocked){
-            ctx.fillStyle=SCENE_BACKGROUNDS[i%SCENE_BACKGROUNDS.length];
-            ctx.globalAlpha=.13;ctx.fillRect(x,y,w,h);
-        }
-
-        ctx.font="bold italic 26px Segoe UI";ctx.textAlign="left";ctx.globalAlpha=isUnlocked?1:.4;
-        ctx.fillStyle=isUnlocked?"#fff":"#888";
-        ctx.fillText(levels[i].name,x+18,y+33);
-
-        if(!isUnlocked){
-            ctx.font="16px Segoe UI";ctx.fillStyle="#ffb347";ctx.globalAlpha=.9;
-            ctx.textAlign="center";
-            ctx.fillText("Unlocks @ "+levels[i].unlockedAt,x+w/2,y+h+23);
-        }
-
-        if(isUnlocked && i==selectedLevelIdx){
-            drawButton(x+w+14,y+6,92,38,"PLAY",true);
-        }
-        ctx.restore();
+  ctx.fillStyle="#232e35";ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.font="bold 34px Segoe UI";
+  ctx.fillStyle="#ffb347";
+  ctx.textAlign="center";
+  ctx.fillText("Select Level",canvas.width/2,64);
+  let levels=LEVELS;
+  let spacing=70,y0=140;
+  for(let i=0;i<levels.length;++i){
+    let y=y0+i*spacing,x=canvas.width/2-120,w=240,h=52;
+    let isUnlocked=highScore>=levels[i].unlockedAt;
+    ctx.save();ctx.globalAlpha=isUnlocked?1:.25;
+    ctx.strokeStyle=isUnlocked?"#f7e17c":"#555";ctx.lineWidth=(i==selectedLevelIdx)?4:2;
+    ctx.strokeRect(x,y,w,h);
+    if(isUnlocked){
+      ctx.fillStyle=SCENE_BACKGROUNDS[i%SCENE_BACKGROUNDS.length];
+      ctx.globalAlpha=.13;ctx.fillRect(x,y,w,h);
     }
+    ctx.font="bold italic 26px Segoe UI";ctx.textAlign="left";ctx.globalAlpha=isUnlocked?1:.4;
+    ctx.fillStyle=isUnlocked?"#fff":"#888";
+    ctx.fillText(levels[i].name,x+18,y+33);
+    if(!isUnlocked){
+      ctx.font="16px Segoe UI";ctx.fillStyle="#ffb347";ctx.globalAlpha=.9;
+      ctx.textAlign="center";
+      ctx.fillText("Unlocks @ "+levels[i].unlockedAt,x+w/2,y+h+23);
+    }
+    if(isUnlocked&&i==selectedLevelIdx){
+      drawButton(x+w+14,y+6,92,38,"PLAY",true);
+    }
+    ctx.restore();
+  }
 }
-
-// (Rest of gameplay code continues here...)
-
+// ========== GAMEPLAY ==========
+function resetGamePlay(){
+  currentScore=0;comboCount=0;playerHealth=100;inGameSceneY=0;enemies=[];
+  player={
+    x:canvas.width/2,
+    y:80,
+    vx:0,
+    vy:0,
+    w:42,h:68,
+    col:getUnlockedChars()[selectedCharIdx].color,
+    attacking:false,
+    attackTimer:0,
+    onGround:true,
+    facingRight:true,
+    name:getUnlockedChars()[selectedCharIdx].name,
+    speed:5,
+    gravity:.7,
+    hp:100,
+    atkPower:9
+  };
+}
+function spawnEnemy(){
+  let ex=Math.random()*(canvas.width-120)+60;
+  let ey=inGameSceneY+Math.random()*220+340;
+  enemies.push({
+    x:ex,y:ey,vx:(Math.random()<.5?-1:1)*(.7+Math.random()*1.3),
+    vy:0,w:36,h:52,hp:12,col:"#bc3cff",
+    alive:true,dmgTimer:0
+  });
+}
+function updateGameplay(){
+ if(Math.random()<.02&&enemies.length<6)spawnEnemy();
+ player.onGround=false;
+ if(keys["ArrowLeft"]||keys["KeyA"]){player.x-=player.speed;player.facingRight=false;}
+ if(keys["ArrowRight"]||keys["KeyD"]){player.x+=player.speed;player.facingRight=true;}
+ if(keys["Space"]&&player.onGround){player.vy=-11;}
+ player.vy+=player.gravity;player.y+=player.vy;if(player.y>540){player.y=540;player.vy=0;player.onGround=true;}
+ if(player.x<30)player.x=30;if(player.x>canvas.width-30)player.x=canvas.width-30;
+ if(keys["KeyJ"]&&!player.attacking){player.attacking=true;player.attackTimer=10;}
+ if(player.attacking){player.attackTimer--;if(player.attackTimer<=0){player.attacking=false;}}
+ for(let e of enemies){
+   if(!e.alive)continue;
+   e.x+=e.vx;if(e.x<40||e.x>canvas.width-40)e.vx*=-1;
+   if(e.dmgTimer>0)e.dmgTimer--;
+   let dx=Math.abs(e.x-player.x),dy=Math.abs(e.y-player.y);
+   if(player.attacking&&dx<54&&dy<40&&e.dmgTimer<=0){
+     e.hp-=player.atkPower;e.dmgTimer=8;if(e.hp<=0){e.alive=false;currentScore+=100;comboCount++;comboTimer=60;}
+   }
+   if(dx<38&&dy<44&&e.alive&&e.dmgTimer<=0&&!player.attacking){
+     playerHealth-=13;e.dmgTimer=10;comboCount=0;
+     if(playerHealth<=0){gameState="lose";if(currentScore>highScore){highScore=currentScore;localStorage.setItem("forgeborn_highscore",highScore);}}
+   }
+ }
+ enemies=enemies.filter(e=>e.alive);
+ if(comboTimer!==null){comboTimer--;if(comboTimer<=0){comboCount=0;comboTimer=null;}}
+ // Vertical camera (descend as you walk down)
+ inGameSceneY+=((player.y-220)-inGameSceneY)*.14;
+}
+// ========== GAMEPLAY DRAW ==========
+function drawGameplay(){
+ // BG
+ let bgCol=SCENE_BACKGROUNDS[selectedLevelIdx%SCENE_BACKGROUNDS.length];
+ ctx.fillStyle=bgCol;ctx.fillRect(0,0,canvas.width,canvas.height);
+ // Ground
+ for(let i=-1;i<=17;i++){
+   let gy=(440-inGameSceneY)+i*60;
+   ctx.save();ctx.globalAlpha=.15+.1*Math.sin(i+Date.now()/700);
+   ctx.fillStyle="#fff";ctx.beginPath();ctx.ellipse(canvas.width/2+Math.sin(i)*200,gy,410-22*Math.abs(i%5),24,0,0,Math.PI*2);ctx.fill();ctx.restore();
+ }
+ // Player
+ ctx.save();ctx.translate(player.x,player.y-inGameSceneY);
+ // Shadow
+ ctx.save();ctx.globalAlpha=.22;ctx.beginPath();ctx.ellipse(0,player.h/1.8,player.w*.95,14,0,0,Math.PI*2);ctx.fillStyle="#111";ctx.fill();ctx.restore();
+ // Body
+ ctx.save();if(player.attacking)ctx.rotate((player.facingRight?1:-1)*.15);ctx.restore();
+ // Body rectangle
+ ctx.strokeStyle="#fff";ctx.lineWidth=3;ctx.fillStyle=player.col;
+ ctx.beginPath();ctx.ellipse(0,-10,player.w/2.1,player.h/2.1,0,0,Math.PI*2);ctx.closePath();ctx.globalAlpha=.96;ctx.fill();ctx.globalAlpha=.7;ctx.stroke();
+ // Face
+ ctx.font="bold italic 30px Segoe UI";ctx.textAlign="center";ctx.globalAlpha=.72;
+ ctx.fillStyle="#fff";ctx.fillText(player.name[0],0,-4);
+ // Attack effect
+ if(player.attacking){
+   ctx.save();ctx.globalAlpha=.41;ctx.rotate((player.facingRight?1:-1)*.33);
+   ctx.beginPath();ctx.arc(player.facingRight?38:-38,-13,26,-.6,.6);ctx.strokeStyle="#ffb347";ctx.lineWidth=15;ctx.stroke();ctx.restore();
+ }
+ // Health bar over head
+ let hpFrac=Math.max(0,playerHealth/100);
+ let bhw=Math.round(player.w*.9),bhx=-bhw/2,bhy=-48;
+ ctx.save();ctx.globalAlpha=.95;ctx.lineWidth=7;ctx.strokeStyle="#333";
+ ctx.beginPath();ctx.moveTo(bhx,bhy);ctx.lineTo(bhx+bhw,bhy);ctx.stroke();
+ if(hpFrac>0){
+   ctx.strokeStyle="#ffb347";if(hpFrac<.3)ctx.strokeStyle="#f33";
+   ctx.beginPath();ctx.moveTo(bhx,bhy);ctx.lineTo(bhx+bhw*hpFrac,bhy);ctx.stroke();
+ }
+ // Combo
+ if(comboCount>=2){
+   let ccol="#ffb347";
+   if(comboCount>=10)ccol="#bc3cff";
+   if(comboCount>=20)ccol="#18d860";
+   let label=(comboCount>=20?"ULTRA! ":comboCount>=10?"MEGA! ":"")+comboCount+"x Combo!";
+   ctx.font="bold italic 24px Segoe UI";ctx.globalAlpha=.81;ctx.strokeStyle="#000";ctx.lineWidth=6;
+   ctx.strokeText(label,-8,-68);ctx.globalAlpha=.99;ctx.fillStyle=ccol;
+   ctx.fillText(label,-8,-68);
+ }
+ // End player draw
+ ctx.restore();
+ // Enemies
+ for(let e of enemies){
+   if(!e.alive)continue;
+   let ey=e.y-inGameSceneY;
+   // Shadow
+   ctx.save();ctx.globalAlpha=.19;ctx.beginPath();ctx.ellipse(e.x,ey+e.h/2.1,e.w*.95,12,0,0,Math.PI*2);ctx.fillStyle="#111";ctx.fill();ctx.restore();
+   // Body
+   let col=e.dmgTimer>0?"#ff1a1a":e.col;
+   ctx.save();if(e.dmgTimer>0)ctx.globalAlpha=.7+.3*Math.sin(e.dmgTimer*6);
+   ctx.beginPath();ctx.ellipse(e.x,ey,e.w/2,e.h/2.05,.03*Math.sin(Date.now()/250),0,Math.PI*2);ctx.closePath();
+   ctx.globalAlpha*=.88;ctx.fillStyle=col;ctx.fill();
+   // Eyes
+   if(e.dmgTimer<=0){let eyey=Math.sin(Date.now()/120+e.x)*5;
+     for(let k=-1;k<=1;k+=2){
+       let ex=e.x+k*8;
+       ctx.beginPath();ctx.arc(ex,ey-6+eyey,.9+k*1.9+k*k*.7+.5*Math.sin(Date.now()/77),-.4,.9);ctx.globalAlpha=.96;ctx.strokeStyle="#fff";ctx.lineWidth=k==1?4:3;ctx.stroke();
+     }
+   }
+   // HP bar
+   let ef=e.hp/12;if(ef>0){
+     let ew=e.w*.92,bx=e.x-ew/2,bh=-e.h/2-6;
+     ctx.save();ctx.lineWidth=4;ctx.globalAlpha=.92;
+     ctx.strokeStyle="#191723";ctx.beginPath();ctx.moveTo(bx,bh+ey);ctx.lineTo(bx+ew,bh+ey);ctx.stroke();
+     if(ef>0){let ccol="#f7e17c";if(ef<.3)ccol="#f33";
+       ctx.strokeStyle=ccol;ctx.beginPath();ctx.moveTo(bx,bh+ey);ctx.lineTo(bx+ew*ef,bh+ey);ctx.stroke();}
+     ctx.restore();
+   }
+   // End enemy
+   ctx.restore();
+ }
+ // HUD
+ // Score
+ let scoreBarCol="#18151c",hudtxtcol="#f7e17c"; 
+ let sbarh=42,sbarw=310,sbary=26,sbarx=(canvas.width-sbarw)/2;
+ // Top bar background (HUD)
+ ctx.save();ctx.globalAlpha=.87; 
+ ctx.fillStyle=scoreBarCol; 
+ ctx.roundRect? 
+   (ctx.beginPath(), 
+    roundRect(ctx,sbarx,sbary,sbarw,sbarh,sbarh/3), 
+    ctx.closePath(), 
+    ctx.fill())
+ : 
+   (ctx.beginPath(), 
+    ctx.moveTo(sbarx,sbary+sbarh/2), 
+    ctx.arcTo(sbarx,sbary,sbarx+sbarw,sbary,sbarh/3), 
+    ctx.arcTo(sbarx+sbarw,sbary,sbarx+sbarw,sbary+sbarh,sbarh/3), 
+    ctx.arcTo(sbarx+sbarw,sbary+sbarh,sbarx,sbary+sbarh,sbarh/3), 
+    ctx.arcTo(sbarx,sbary+sbarh,sbarx,sbary,sbarh/3), 
+    ctx.closePath(), 
+    ctx.fill());
+ // Score values
+ let sfont="bold italic 32px Segoe UI";
+ let scoreStr=currentScore.toLocaleString(),hsStr="Hi "+highScore.toLocaleString();
+ let comboStr=(comboCount>=2?(comboCount+"x Combo"):"");
+ // Score value
+ let scx=sbarx+sbarw*.25,hscx=sbarx+sbarw*.75,hsy=sbary+sbarh*.62;
+ // Score
+ ctx.font=sfont; 
+ ctx.textAlign="center"; 
+ ctx.globalAlpha=.99; 
+ ctx.shadowColor=hudtxtcol=="#f7e17c"?"#bc3cff":"#000"; 
+ ctx.shadowBlur=8; 
+ ctx.fillStyle=hudtxtcol; 
+ ctx.fillText(scoreStr,scx,hsy); 
+ // High score
+ if(highScore>currentScore){
+   let stxtcol="#88c6ff"; 
+   if(highScore-currentScore<=300){stxtcol="#ffb347";}
+   else if(highScore-currentScore<=100){stxtcol="#bc3cff";}
+   else if(highScore-currentScore<=40){stxtcol="#ff1a1a";}
+   else stxtcol="#88c6ff";
+   let hsfont="bold italic "+(28-(Math.min(60,(highScore-currentScore))/15))+"px Segoe UI";
+   hsfont+=","+(comboCount>=10?"italic ":"")+"Arial";
+   hsy-=comboCount>=10?7:4;
+   hscx=sbarx+sbarw*.74+(comboCount>=10?18*Math.sin(Date.now()/200):0);
+   comboStr&&(hsfont+=" bold");
+   hsy+=(comboStr?8:4); 
+   stxtcol&&(hudtxtcol=stxtcol);
+   hsy+=(comboCount>=10?4:-4);
+   hsfont&&(sfont=hsfont);
+ }
+ // High score text
+ hsStr&&(
+     (sfont=(comboStr?("italic bold ":"")+"25px Segoe UI":sfont)),
+     (hudtxtcol=(comboCount>=10?"#bc3cff":hudtxtcol)),
+     (comboStr&&(hsStr+=" | "+comboStr)),
+     (hsStr&&(hsfont=sfont)),
+     (hsStr&&(hsy+=5)),
+     (hsStr&&(hscx-=3)),
+     (hsStr&&(sfont=sfont)),
+     (sfont&&(hsfont=sfont)),
+     (hsStr&&(hsStr="Hi "+highScore.toLocaleString())),
+     (comboStr&&(hsfont+=" italic")),
+     (comboStr&&(hsfont+=" bold")),
+     (hsStr&&(stxtcol=hudtxtcol)),
+     (hsStr&&(htxtcol=hudtxtcol)), 
+     (hsStr&&(htxtcol=hudtxtcol)),
+     (htxtcol&&(hudtxtcol=htxtcol)),
+     (hsStr&&(scx-=20))
+ );
+ hsStr&&(hsfont=sfont,hudtxtcol=hudtxtcol)
+ hsStr&&(scx=hscx)
+ hsStr&&(hsy=hsy)
+ hsStr&&(htxtcol=hudtxtcol)
+ hsStr&&(stxtcol=hudtxtcol)
+ hsStr&&(hsfont=sfont)
+ hsStr&&(hudtxtcol=hudtxtcol)
+ hsStr&&(sfont=sfont)
+ hsStr&&(htxtcol=hudtxtcol)
+ hsStr&&(htxtcol=hudtxtcol)
+ hsStr&&(htxtcol=hudtxtcol)
+ hsStr&&(htxtcol=hudtxtcol)
+ hsStr&&(htxtcol=hudtxtcol)
+ hsStr&&(htxtcol=hudtxtcol)
+ hsStr&&(sfont=sfont)
+ hsStr&&(stxtcol=hudtxtcol)   
+ hsStr&&(stxtcol=hudtxtcol)
+ hsStr&&(stxtcol=hudtxtcol)
+ hsStr&&(stxtcol=hudtxtcol)
+ hsStr&&(stxtcol=hudtxtcol)
+ hsStr&&(stxtcol=hudtxtcol)
+ hsStr&&(stxtcol=hudtxtcol)
+ hsStr&&(stxtcol=hudtxtcol)
+ hsStr&&(stxtcol=hudtxtcol)
+ hsStr&&(stxtcol=hudtxtcol)
+ hsStr&&(htxtcol=hudtxtcol)
+ hsStr&&(htxtcol=hudtxtcol)
+ hsStr&&(htxtcol=hudtxtcol)
+ hsStr&&(htxtcol=hudtxtcol)
+ hsStr&&(htxtcol=hudtxtcol)
+ hsStr&&(htxtcol=hudtxtcol)
+ hsStr&&(htxtcol=hudtxtcol)
+ hsStr&&(htxtcol=hudtxtcol)
+ hsStr&&(htxtcol=hudtxtcol)
+ hsStr&&(htxtcol=hudtxtcol)
+// ========== END DRAW GAMEPLAY ==========
+}
+// ========== GAME LOOP & INPUT ==========
+function handleMenuInput(){
+ if(gameState==="charselect"){
+   if(keys["ArrowLeft"]||keys["KeyA"])selectedCharIdx=Math.max(0,selectedCharIdx-1),keys["ArrowLeft"]=keys["KeyA"]=false;
+   else if(keys["ArrowRight"]||keys["KeyD"])selectedCharIdx=Math.min(CHARACTERS.length-1,selectedCharIdx+1),keys["ArrowRight"]=keys["KeyD"]=false;
+   else if(keys["Enter"]||keys["Space"]){
+     if(highScore>=CHARACTERS[selectedCharIdx].unlockedAt){gameState="levelselect";}
+     keys["Enter"]=keys["Space"]=false;}
+ }else if(gameState==="levelselect"){
+   if(keys["ArrowUp"]||keys["KeyW"])selectedLevelIdx=Math.max(0,selectedLevelIdx-1),keys["ArrowUp"]=keys["KeyW"]=false;
+   else if(keys["ArrowDown"]||keys["KeyS"])selectedLevelIdx=Math.min(LEVELS.length-1,selectedLevelIdx+1),keys["ArrowDown"]=keys["KeyS"]=false;
+   else if(keys["Enter"]||keys["Space"]){
+     if(highScore>=LEVELS[selectedLevelIdx].unlockedAt){resetGamePlay();gameState="playing";}
+     keys["Enter"]=keys["Space"]=false;}
+ }else if(gameState==="lose"){
+   if(keys["Enter"]||keys["Space"]){gameState="title";}
+ }
+}
+// ========== MAIN LOOP ==========
+function mainLoop(){
+ handleMenuInput();
+ if(gameState==="title")drawTitle();
+ else if(gameState==="charselect")drawCharSelect();
+ else if(gameState==="levelselect")drawLevelSelect();
+ else if(gameState==="playing"){updateGameplay();drawGameplay();}
+ else if(gameState==="lose"){
+     // Game over screen
+     ctx.clearRect(0,0,canvas.width,canvas.height);
+     drawTitle();
+     let ystart=420;
+     ctx.font="bold italic 48px Segoe UI";ctx.textAlign="center";ctx.shadowColor="#191723";ctx.shadowBlur=9;
+     let t=(currentScore>=highScore)?"NEW HIGH SCORE!":"GAME OVER!";
+     let tc=(currentScore>=highScore)?"#f7e17c":"#bc3cff";
+     t+="\n"+currentScore.toLocaleString()+" pts";
+     t.split("\n").forEach((line,i)=>{
+       i==1?(tc="#fff"):null;
+       ystart+=i*62; 
+       i==1?(tc=currentScore>=highScore?"#f7e17c":"#fff"):null;
+       i==1?(t=line):null;
+       i==1?(t=line):null;
+       i==1?(t=line):null;
+       i==1?(t=line):null;
+       i==1?y=start:i==1?ystart+=40:null;
+       i==1?ystart+=40:null;i==1?ystart+=40:null;i==1?ystart+=40:null;i==1?ystart+=40:null;i==1?ystart+=40:null;i==1?ystart+=40:null;i==1?ystart+=40:null;i==1?ystart+=40:null;i==1?ystart+=40:null;i==1?ystart+=40:null;i==1?ystart+=40:null;i==1?ystart+=40:null;i==1?ystart+=40:null;i==1?ystart+=40:null;i==1?ystart+=40:null;i==1?ystart+=40:null;i==1?ystart+=40:null;i==1?ystart+=40:null;i==1?ystart+=40:null;i==1?ystart+=40:null;i==1?ystart+=40:null;i==1?ystart+=40:null;i==1?ystart+=40:null;i==1?ystart+=40:null;i==1?ystart+=40:null;i==1?ystart+=40:null;i==1?ystart+=40:null;i==1?ystart+=40:null;i==1?ystart+=40:null;i==1?ystart+=40:null,i==1?tc:"#fff"
+       ;});
+     // Prompt
+     ystart+=32;let blink=(Math.floor(Date.now()/500)%2)==0;if(blink){  
+         ystart+=24;  
+         ctx.font="bold italic 28px Segoe UI";  
+         ctx.shadowBlur=5;  
+         t="[ Press Enter to Continue ]";  
+         tc="#fff";  
+         t.split("\n").forEach((line,i)=>{  
+           ystart+=i*32;  
+           tc=currentScore>=highScore?"#f7e17c":"#fff";  
+           tc=currentScore>=highScore?"#f7e17c":"#fff";  
+           tc=currentScore>=highScore?"#f7e17c":"#fff";  
+           tc=currentScore>=highScore?"#f7e17c":"#fff";  
+           tc=currentScore>=highScore?"#f7e17c":"#fff";  
+           tc=currentScore>=highScore?"#f7e17c":"#fff";  
+           tc=currentScore>=highScore?"#f7e17c":"#fff";  
+           tc=currentScore>=highScore?"#f7e17c":"#fff";  
+           tc=currentScore>=highScore?"#f7e17c":"#fff";  
+           tc=currentScore>=highScore?"#f7e17c":"#fff";
+           tc=currentScore>=highScore?"#f7e17c":"#fff";
+           tc=currentScore>=highScore?"#f7e17c":"#fff";
+           tc=currentScore>=highScore?"#f7e17c":"#fff";
+           tc=currentScore>=highScore?"#f7e17c":"#fff";
+           tc=currentScore>=highScore?"#f7e17c":"#fff";
+           ;
+           });
+         }
+ }
+// Loop again
+ requestAnimationFrame(mainLoop);
+}
+mainLoop();
+// Helper for rounded rects in HUD bar (if browser supports .roundRect)
+function roundRect(ctx,x,y,w,h,r){r=Math.min(r,w/2,h/2);if(ctx.roundRect) return(ctx.roundRect(x,y,w,h,r));else{let right=x+w,bottom=y+h;return(ctx.moveTo(x+r,y),ctx.arcTo(right,y,right,bottom,r),ctx.arcTo(right,bottom,x,bottom,r),ctx.arcTo(x,bottom,x,y,r),ctx.arcTo(x,y,right,y,r));}}
 </script>
 </body>
 </html>
