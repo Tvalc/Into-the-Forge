@@ -1,1 +1,22 @@
-/* Game styles */
+body {
+  margin: 0;
+  background: #111;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  color: #fff;
+}
+#gameContainer {
+  width: 800px;
+  height: 600px;
+  margin: 32px auto;
+  background: #222;
+  border-radius: 20px;
+  box-shadow: 0 0 40px #000c;
+  position: relative;
+}
+canvas {
+  display: block;
+  margin: auto;
+  background: linear-gradient(#2b2736,#191723);
+  border-radius: 18px;
+}
+::-webkit-scrollbar { display: none; }
