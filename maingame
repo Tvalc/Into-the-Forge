@@ -1,61 +1,59 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Generated Game</title>
-    <style>
-        body { margin: 0; padding: 0; background: #000; font-family: Arial, sans-serif; overflow: hidden; }
-        canvas { display: block; margin: 0 auto; }
-        #gameContainer { width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; }
-        
-    </style>
+  <meta charset="UTF-8" />
+  <title>FORGEBORN: SOLSTICE BREAK</title>
+  <meta name="viewport" content="width=800, initial-scale=1.0">
+  <style>
+    html, body { height: 100%; margin:0; padding:0; background: #18141e; }
+    #gameCanvas { display:block; margin:0 auto; background:#191723; }
+    body { font-family: Segoe UI, Arial, sans-serif; }
+    ::selection { background: #ffb34788; }
+  </style>
 </head>
 <body>
-    <div id="gameContainer">
-        <canvas id="gameCanvas" width="800" height="600"></canvas>
-        <div id="game"></div>
-    </div>
-    
-    <script>
-        // === DATA ===
+<canvas id="gameCanvas" width="800" height="600"></canvas>
+
+<script>
+// === DATA ===
 const CHARACTERS = [
-  { name:"Korok", faction:"Tempys", unlockedAt:0, color:"#ff7200", hp:140, speed:3.2, atk:18 },
-  { name:"Oros", faction:"Alloyin", unlockedAt:10000, color:"#18d860", hp:80, speed:4.2, atk:12 },
+  { name:"Korok", faction:"Tempys", unlockedAt:0, color:"#ff7200", desc:"Tank with area control" },
+  { name:"Oros", faction:"Alloyin", unlockedAt:10000, color:"#18d860", desc:"Ranged combat, defensive" },
+  { name:"Cercee", faction:"Uterra", unlockedAt:25000, color:"#bc3cff", desc:"Support/crowd control" },
+  { name:"Ironbeard", faction:"Alloyin", unlockedAt:50000, color:"#88c6ff", desc:"Heavy damage, slow" },
+  { name:"Ignir", faction:"Tempys", unlockedAt:100000, color:"#ff1a1a", desc:"Fast-paced combo fighter" },
+  { name:"Voss", faction:"Nekrium", unlockedAt:200000, color:"#9300c2", desc:"Secret Nekrium powers" }
 ];
 const LEVELS = [
-  {
-    name:"Frozen Wastes",
-    unlockedAt:0,
-    scenes:[
-      { name:"Open Tundra", bg:"#325c85", enemyCount:6 },
-      // ... (add more scenes for full game)
-    ]
-  }
+  { name:"Frozen Wastes", unlockedAt:0 },
+  { name:"Rootrealms", unlockedAt:25000 },
+  { name:"Brightsteel City", unlockedAt:50000 },
+  // ...add more levels as needed
 ];
 
-let highScore = Number(localStorage.getItem("forgeborn_highscore")||"0");
-let state = "title"; // title,charselect,levelselect,playing,gameover
-let selectedChar = 0, selectedLevel = 0;
-let canvas = document.getElementById('gameCanvas'), ctx = canvas.getContext('2d');
-let player,enemies=[],score=0,combo=0,maxCombo=0,sceneIdx=0;
-let keys={};
-
-// === INPUT ===
-window.addEventListener('keydown',e=>{
+// === STATE ===
+let state = "title"; // title,charselect,levelselect,playing
+let selectedChar = 0;
+let selectedLevel = 0;
+let highScore = Number(localStorage.getItem("forgeborn_highscore") || "0");
+let canvas = document.getElementById('gameCanvas');
+let ctx = canvas.getContext('2d');
+let keys = {};
+window.addEventListener('keydown', e => {
   keys[e.key] = true;
-  if(state==="title"||state==="gameover") { state="charselect"; }
+  if(state === "title") { state = "charselect"; keys = {}; }
 });
-window.addEventListener('keyup',e=>{ keys[e.key]=false; });
+window.addEventListener('keyup', e => { keys[e.key] = false; });
 
-// === GAME LOOP ===
+// === MAIN LOOP ===
 function loop() {
   ctx.clearRect(0,0,canvas.width,canvas.height);
-  if(state==="title") drawTitle();
-  if(state==="charselect") drawCharSelect();
-  if(state==="levelselect") drawLevelSelect();
-  if(state==="playing") drawGame();
-  if(state==="gameover") drawGameOver();
+  switch(state) {
+    case "title": drawTitle(); break;
+    case "charselect": drawCharSelect(); break;
+    case "levelselect": drawLevelSelect(); break;
+    case "playing": drawGameHUD(); break;
+  }
   requestAnimationFrame(loop);
 }
 loop();
@@ -63,8 +61,10 @@ loop();
 // === SCREENS ===
 function drawTitle() {
   // BG & animated SolForge
-  let grad=ctx.createLinearGradient(0,0,0,canvas.height); grad.addColorStop(0,"#191723"); grad.addColorStop(1,"#502a11");
+  let grad=ctx.createLinearGradient(0,0,0,canvas.height);
+  grad.addColorStop(0,"#191723"); grad.addColorStop(1,"#502a11");
   ctx.fillStyle=grad; ctx.fillRect(0,0,canvas.width,canvas.height);
+
   let t=Date.now()/800;
   ctx.save();
   ctx.translate(canvas.width/2,canvas.height/2-90 + Math.sin(t)*8);
@@ -75,6 +75,7 @@ function drawTitle() {
   ctx.fillStyle="#bc3cff";ctx.beginPath();
   ctx.arc(18,-140+Math.cos(t)*16,16+Math.sin(t*1.9)*4,0,Math.PI*2);ctx.fill();
   ctx.globalAlpha=1;ctx.restore();
+
   // Title
   ctx.fillStyle="#ffb347"; ctx.font="bold 46px Segoe UI"; ctx.textAlign="center";
   ctx.shadowColor="#602f07";ctx.shadowBlur=14;
@@ -82,1236 +83,213 @@ function drawTitle() {
   ctx.fillStyle="#fff"; ctx.font="bold italic 36px Segoe UI";
   ctx.shadowBlur=8;ctx.shadowColor="#bc3cff";
   ctx.fillText("SOLSTICE BREAK",canvas.width/2,160); ctx.shadowBlur=0;
+
   // High Score
   ctx.font="bold 26px Segoe UI";ctx.fillStyle="#f7e17c";
   ctx.fillText("High Score: "+highScore.toLocaleString(),canvas.width/2,260);
+
   // Prompt
   if(Math.floor(Date.now()/500)%2===0) {
     ctx.font="bold italic 28px Segoe UI";ctx.fillStyle="#fff";
     ctx.fillText("[ Press Any Button to Start ]",canvas.width/2,340);
   }
 }
+
 function drawCharSelect() {
   ctx.fillStyle="#262335";ctx.fillRect(0,0,canvas.width,canvas.height);
   ctx.font="bold 34px Segoe UI";ctx.fillStyle="#ffb347";
   ctx.textAlign="center";
   ctx.fillText("Choose Your Forgeborn",canvas.width/2,64);
+
+  let spacing = 120;
+  let x0 = canvas.width/2 - ((CHARACTERS.length-1)*spacing)/2;
   for(let i=0;i<CHARACTERS.length;++i) {
-    let x=160+i*160,y=240,r=48,isUnlocked=highScore>=CHARACTERS[i].unlockedAt;
-    // Portrait
-    ctx.save();ctx.beginPath();ctx.arc(x,y,r+8,0,Math.PI*2);ctx.closePath();
+    let x=x0+i*spacing,y=220,r=48,isUnlocked=highScore>=CHARACTERS[i].unlockedAt;
+
+    // Portrait BG
+    ctx.save();
+    ctx.beginPath();ctx.arc(x,y,r+8,0,Math.PI*2);ctx.closePath();
     ctx.globalAlpha=isUnlocked?1:.15;ctx.strokeStyle="#fff";ctx.lineWidth=i===selectedChar?7:3;ctx.stroke();
+    // Portrait Fill
     ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.closePath();ctx.fillStyle=CHARACTERS[i].color;ctx.globalAlpha=isUnlocked?.85:.19;ctx.fill();
     if(!isUnlocked){ctx.globalAlpha=.5;ctx.fillStyle="#222";ctx.beginPath();ctx.arc(x,y,r-4,0,Math.PI*2);ctx.closePath();ctx.fill();}
+    // Letter
     ctx.globalAlpha=1;ctx.font="bold italic 38px Segoe UI";ctx.fillStyle="#fff";ctx.textAlign="center";
     ctx.fillText(CHARACTERS[i].name[0],x,y+7);
+
     // Lock info
     if(!isUnlocked){
       ctx.font="16px Segoe UI";ctx.fillStyle="#ffb347";
       ctx.fillText("Unlocks @ "+CHARACTERS[i].unlockedAt,x,y+r+24);
     }
+    // Selected Info
     if(i===selectedChar) {
       ctx.font="italic bold 20px Segoe UI";ctx.fillStyle="#fff";
       ctx.fillText(CHARACTERS[i].name+" ("+CHARACTERS[i].faction+")",x,y+r+44);
       if(isUnlocked){
-        ctx.save();
-        ctx.globalAlpha=.98;
-        ctx.strokeStyle="#fff";ctx.lineWidth=2;
-        ctx.strokeRect(x-48,y+r+56,96,36);
-        ctx.fillStyle="#ff9200";
-        ctx.fillRect(x-48,y+r+56,96,36);
-        ctx.font="bold 28px Segoe UI";
-        ctx.textAlign="center";
-        ctx.textBaseline="middle";
-        ctx.fillStyle="#fff";
-        ctx.fillText("SELECT",x,y+r+74);
-        ctx.restore();
-        // Mouse/touch support (demo: hit enter or space)
-        if(keys["Enter"]||keys[" "]) { state="levelselect"; keys["Enter"]=keys[" "]=false;}
+        // SELECT BUTTON
+        drawButton(x-48,y+r+56,96,36,"SELECT",true);
+        if(keys["Enter"]||keys[" "]) {
+          state="levelselect";
+          keys["Enter"]=keys[" "]=false;
+        }
       }
+      // Description
+      ctx.font="16px Segoe UI";ctx.fillStyle="#aaa";
+      ctx.fillText(CHARACTERS[i].desc,x,y+r+80);
     }
     ctx.restore();
+
     // Navigation (keyboard)
     if(keys["ArrowLeft"]&&i===selectedChar&&i>0){selectedChar--;keys["ArrowLeft"]=false;}
     if(keys["ArrowRight"]&&i===selectedChar&&i<CHARACTERS.length-1){selectedChar++;keys["ArrowRight"]=false;}
   }
 }
+
 function drawLevelSelect() {
   ctx.fillStyle="#232e35";ctx.fillRect(0,0,canvas.width,canvas.height);
   ctx.font="bold 34px Segoe UI";ctx.fillStyle="#ffb347";
   ctx.textAlign="center";
   ctx.fillText("Select Level",canvas.width/2,64);
-  let level = LEVELS[selectedLevel];
-  let y = canvas.height/2-50;
-  // BG color preview as placeholder
-  ctx.save();ctx.globalAlpha=.13;ctx.fillStyle=level.scenes[sceneIdx].bg;ctx.fillRect(canvas.width/2-120,y-60,240,120);ctx.restore();
-  // Level name
-  ctx.font="bold italic 26px Segoe UI";
-  ctx.textAlign="center";
-  ctx.globalAlpha=1;
-  ctx.fillStyle="#fff";
-  ctx.fillText(level.name,x=canvas.width/2,y=y+90);
-  
-  // Unlocked?
-  if(highScore>=level.unlockedAt) {
-    // Button
-    ctx.save();
-    ctx.globalAlpha=.98;
-    ctx.strokeStyle="#fff";ctx.lineWidth=2;
-    ctx.strokeRect(x-48,y+62,96,36);
-    ctx.fillStyle="#ff9200";
-    ctx.fillRect(x-48,y+62,96,36);
-    ctx.font="bold 28px Segoe UI";
-    ctx.textAlign="center";
-    ctx.textBaseline="middle";
-    ctx.fillStyle="#fff";
-    ctx.fillText("PLAY",x,y+80);
+
+  let spacing=70,y0=140;
+  for(let i=0;i<LEVELS.length;++i){
+    let y=y0+i*spacing,x=canvas.width/2-120,w=240,h=52;
+    let isUnlocked=highScore>=LEVELS[i].unlockedAt;
+
+    // BG box
+    ctx.save();ctx.globalAlpha=isUnlocked?1:.25;
+    ctx.strokeStyle=isUnlocked?"#f7e17c":"#555";ctx.lineWidth=(i==selectedLevel)?4:2;
+    ctx.strokeRect(x,y,w,h);
+
+    // Level name
+    ctx.font="bold italic 26px Segoe UI";ctx.textAlign="left";ctx.globalAlpha=isUnlocked?1:.4;
+    ctx.fillStyle=isUnlocked?"#fff":"#888";
+    ctx.fillText(LEVELS[i].name,x+18,y+33);
+
+    // Lock info
+    if(!isUnlocked){
+      ctx.font="16px Segoe UI";ctx.fillStyle="#ffb347";ctx.globalAlpha=.9;
+      ctx.textAlign="center";
+      ctx.fillText("Unlocks @ "+LEVELS[i].unlockedAt,x+w/2,y+h+23);
+    }
+
+    // Select button if unlocked & selected
+    if(isUnlocked && i==selectedLevel){
+      drawButton(x+w+14,y+6,92,38,"PLAY",true);
+      if(keys["Enter"]||keys[" "]){ state="playing"; keys["Enter"]=keys[" "]=false;}
+    }
+
     ctx.restore();
-    if(keys["Enter"]||keys[" "]){ startGame(); keys["Enter"]=keys[" "]=false;}
-  } else {
-    // Locked info
-    ctx.font="16px Segoe UI";ctx.fillStyle="#ffb347";
-    ctx.globalAlpha=.9;
-    ctx.textAlign="center";
-    ctx.fillText("Unlocks @ "+level.unlockedAt,x,y+84);
-    ctx.globalAlpha=1;
+
+    // Navigation (keyboard)
+    if(keys["ArrowUp"]&&i===selectedLevel&&i>0){selectedLevel--;keys["ArrowUp"]=false;}
+    if(keys["ArrowDown"]&&i===selectedLevel&&i<LEVELS.length-1){selectedLevel++;keys["ArrowDown"]=false;}
   }
 }
-function drawGameOver(){
-  // BG fade
-  ctx.save();ctx.globalAlpha=.55;ctx.fillStyle="#000";ctx.fillRect(0,0,canvas.width,canvas.height);ctx.restore();
+
+// Simple HUD for demo purposes only
+function drawGameHUD() {
+  // Top bar HUD (Score/Health)
+  ctx.save();
+  ctx.globalAlpha=.97;
+  ctx.fillStyle="#222a37";
+  ctx.fillRect(0,0,canvas.width,52);
   
-  // Game Over Panel
-  let y = canvas.height/2-80;
+  // Score and Health text
+  ctx.font="bold 22px Segoe UI";
+  ctx.textAlign="left";
+  ctx.fillStyle="#ffe898";
+  ctx.fillText("SCORE: "+(Math.floor(Math.abs(Math.sin(Date.now()/600))*100000)).toLocaleString(),38,32);
+  
+  let char = CHARACTERS[selectedChar];
+  
+  // Health bar
+  let hp = Math.round((Math.abs(Math.cos(Date.now()/800))*100));
+  
+  let hpBarW = Math.max(120,hp*2);
   
   ctx.save();
-  
-  // Panel bg
-  ctx.globalAlpha=.97;
-  
-  ctx.strokeStyle="#bc3cff";
-  
-  ctx.lineWidth=6;
-  
-  ctx.strokeRect(canvas.width/2-140,y-20,280,220);
-
-  
-  // Header
-  
-  
-  ctx.font="bold italic 38px Segoe UI";
-  
-  ctx.textAlign="center";
-  
-  ctx.fillStyle="#ffb347";
-
-  
-  ctx.fillText("GAME OVER!",canvas.width/2,y+20);
-
-  
-   // Score
-  
-   ctx.font="24px Segoe UI";ctx.fillStyle="#fff";
-
-   y+=50;
-
-   ctx.fillText("Score: "+score.toLocaleString(),canvas.width/2,y);
-
-   y+=34;
-
-   ctx.fillText("Max Combo: "+maxCombo+"x",canvas.width/2,y);
-
-   y+=40;
-
-   if(score>highScore) {
-
-     highScore = score;
-
-     localStorage.setItem("forgeborn_highscore",score);
-
-     ctx.font="bold italic 22px Segoe UI";
-
-     ctx.fillStyle="#f7e17c";
-
-     ctx.fillText("NEW HIGH SCORE!",canvas.width/2,y);
-
-     y+=30;
-
-   } else {
-
-     y+=24;
-
-   }
-
-   // Retry button
-
-   y+=20;
-
-   drawUIButton(canvas.width/2-60,y,"RETRY",()=>{state="charselect"});
-
-   y+=54;
-
-   drawUIButton(canvas.width/2-60,y,"QUIT",()=>{state="title"});
-
-   if(keys["Enter"]||keys[" "]){ state="charselect"; keys["Enter"]=keys[" "]=false;}
-
-   keys={};
-
-   ctx.restore();
-
-}
-
-// Helper for drawing UI buttons
-
-function drawUIButton(x,y,text,onClick) {
-
-   // Rect
-
-   ctx.save();
-
-   ctx.globalAlpha=.98;
-
-   ctx.strokeStyle="#fff";ctx.lineWidth=2;
-
-   ctx.strokeRect(x,y,120,36);
-
-   ctx.fillStyle="#ff9200";
-
-   ctx.fillRect(x,y,120,36);
-
-   // Text
-
-   ctx.font="bold italic 22px Segoe UI";
-
-   ctx.textAlign="center";
-
-   ctx.textBaseline="middle";
-
-   ctx.fillStyle="#fff";
-
-   ctx.fillText(text,x+60,y+18);
-
-   // Mouse click
-
-   canvas.onclick=function(e){ 
-
-      let r=canvas.getBoundingClientRect();
-
-      let mx=e.clientX-r.left,my=e.clientY-r.top;
-
-      if(mx>=x&&mx<=x+120&&my>=y&&my<=y+36){
-
-         onClick();
-
-         canvas.onclick=null;
-
-       }
-
-     };
-
-     setTimeout(()=>{ canvas.onclick=null },150);
-
-     ctx.restore();
-
-}
-
-// === GAMEPLAY ===
-
-function startGame() {
-
- player = {
-
-   ...CHARACTERS[selectedChar],
-
-   x: canvas.width/2,
-
-   y:100,
-
-   w:32,h:56,
-
-   vy:0,vx:0,
-
-   facingRight:true,
-
-   attacking:false,
-
-   attackTimer:0,
-
-   hp:CHARACTERS[selectedChar].hp,
-
- };
-
- enemies=[]; score=combo=maxCombo=sceneIdx=0;
-
- spawnEnemies();
-
- state="playing";
-
-}
-
-function spawnEnemies() {
-
- enemies=[];
-
- let scene = LEVELS[selectedLevel].scenes[sceneIdx];
-
- for(let i=0;i<scene.enemyCount;i++) {
-
-   enemies.push({
-
-     x:Math.random()*(canvas.width-60)+30,
-
-     y:Math.random()*(canvas.height-300)+300,
-
-     w:28,h:42,
-
-     vx:(Math.random()>.5?1:-1)*(.7+Math.random()*1.7),
-
-     vy:0,
-
-     hp:20,
-
-     alive:true,
-
-     atk:.5+Math.random()*1.5,
-
-     cd:Math.random()*80,
-
-   });
-
- }
-
-}
-
-function drawGame() {
-
- // BG
-
- let scene = LEVELS[selectedLevel].scenes[sceneIdx];
-
-
-
- // BG color block
-
- ctx.save(); 
-
- let g=ctx.createLinearGradient(0,player.y-360*1.3,0,player.y+360*1.3);
-
- g.addColorStop(0,'#d5e8fa');
-
- g.addColorStop(.25,'#76aadb');
-
- g.addColorStop(.55,'#325c85');
-
- g.addColorStop(1,'#22384b');
-
- 
-
- let viewY = clamp(player.y-360,0,900);
-
- 
-
- // Parallax BG
-
- for(let i=10;i>=1;i--) {
-
-     let alpha=.04+.035*i;
-
-     let off=(360+i*24)-(player.y%720)*.25*(i/10);
-
-     if(i%3===1) alpha*=.6;
-
-     if(i%4===1) alpha*=.7;
-
-     if(i%7===1) alpha*=.9;
-
-     if(i%8===1) alpha*=.5;
-
-     if(i%5===1) alpha*=.6;
-
-     if(i%6===1) alpha*=.8;
-
-     if(i===10) alpha*=.6;
-
-     if(i<=3) alpha*=.7;
-
-     let clr = i%2==0 ? '#fff' : '#9cc9ea';
-
-     if(i>7) clr='#55799f';
-
-     if(i<4) clr='#22384b';
-
-     if(i===10) clr='#191723';
-
-     if(i===8) clr='#bc3cff22';
-
-     if(i===9) clr='#ffbf8f33';
-
-     if(i===6) clr='#bfeaf8';
-
-     if(i===7) clr='#cfd9e6';
-
-     if(i===5) clr='#e3f6fc';
-
-     if(i===4) clr='#dbeffd';
-
-     
-
-     for(let j=-1;j<=1;j++){
-
-         let bx = j*canvas.width;
-
-         let by = off - i*70 + viewY*.33*(i/10);
-
-         by += Math.sin(Date.now()/800+i)*12*i*.12 + Math.cos(Date.now()/700-i)*8*i*.08;
-
-         by = Math.floor(by);
-
-         let h = Math.floor(220/i);
-
-         let w = canvas.width+(i%3)*14+(i%5)*18;
-
-         w=Math.floor(w);
-
-         h=Math.max(h*1.1-i*3+h*.05*Math.sin(Date.now()/200+i),28);
-
-         h=Math.floor(h);
-
-         by-=h*.5;
-
-         by=Math.floor(by);
-
-         let rad = Math.max(20-i*4+i%3*6,i>8?9:i>6?13:i>4?17:i>2?23:h*.25)+4;
-
-         rad=Math.max(rad,h*.14);
-
-         rad=Math.floor(rad);
-
-         
-
-         let fadeg = ctx.createLinearGradient(bx+20,by,bx+w-20,by+h);
-
-         fadeg.addColorStop(0,"#fff"+Math.floor(alpha*128).toString(16));
-
-         fadeg.addColorStop(1,"#22384b"+Math.floor(alpha*70).toString(16));
-
-         for(let c=bx;c<bx+w;c+=rad){
-
-             for(let r=by;r<by+h;r+=rad){
-
-                 let rrad = rad*(.85+.15*Math.random());
-
-                 rrad=Math.max(8+i*.7-(i%4),rrad);
-
-                 rrad=Math.floor(rrad);
-
-                 let cclr=(clr.length>6?clr.substr(0,7):clr)+Math.floor(alpha*255).toString(16).padStart(2,"0");
-
-                 cclr=cclr.padEnd(9,"f");
-
-                 
-
-                 // BG blobs
-
-                 if(rrad<5||w<25||h<20) continue;
-
-                 
-
-                 // BG snow blobs
-
-                 if(i>6&&Math.random()<.07){ 
-
-                     cclr='#fff'+Math.floor(alpha*255).toString(16).padStart(2,"0");
-
-                 }
-
-                 
-
-                 else if(Math.random()<.13 && i>4){ cclr='#bbcfff77'; }
-
-                 
-
-                 else if(Math.random()<.09 && i>3){ cclr='#cce7f98a'; }
-
-                 
-
-                 else if(Math.random()<.05 && i<=3){ cclr='#fff4'; }
-
-                 
-
-                 else if(Math.random()<.04 && i<=5){ cclr='#bc3cff44'; }
-
-  
-
-                 let rx=c+rrad*Math.sin(j+i)*(.78+.22*Math.random());
-
-                 let ry=r+rrad*Math.cos(j-i)*(.78+.22*Math.random());
-
-                 rx=Math.floor(rx);ry=Math.floor(ry);
-
-                 
-
-                 // Draw
-
-                 
-
-                 let radMod=(i%2==1?rrad*.8:rrad*.95)+Math.random()*rrad*.15;
-
-                 
-
-                 radMod=Math.max(radMod,(i<4)?5:i<6?9:i<8?13:i<10?17:23);
-
-                 radMod=Math.floor(radMod);
-
-               
-
-                 
-
-                 
-
-                 
-
-                 
-
-                 
-
-                  
-
-                  
-
-                  
-
-                  
-
-                  
-
-                  
-
-                  
-
-                  
-
-                  
-
-                  
-
-                  
-
-                  
-
-                  
-
-                  
-
-                  
-
-                  
-
-  
-
-                 // Draw BG circle
-
-                 
-
-                 
-
-                 
-
-                     try{
-
-                        
-
-                        
-
-                          
-
-                        
-
-                        
-
-                        
-
-                        
-
-                         
-
-                       
-
-                       
-
-                       
-
-                       
-
-                       
-
-                       
-
-                       
-
-                       
-
-                       
-
-                       
-
- 
-
-                     }catch(e){}
-
-                     
-
-                     
-
- 
-
-                     try{
-
-                        
-
-                        
-
- 
-
-                        
-
- 
-
-                        
-
- 
-
-                        
-
- 
-
-                        
-
- 
-
-                     }catch(e){}
-
-                     
-
- 
-
-                     try{
-
-                        
-
- 
-
-                        
-
- 
-
-                        
-
- 
-
-                        
-
- 
-
-                        
-
- 
-
-                     }catch(e){}
-
-                     
-
- 
-
-                     try{
-
-                        
-
- 
-
-                        
-
- 
-
-                        
-
- 
-
-                        
-
- 
-
-                     }catch(e){}
-
-                     
-
- 
-
-                     try{
-
-                        
-
- 
-
-                        
-
- 
-
-                     }catch(e){}
-
-                     
-
-  
-
-                   try{
-
-                      
-
- 
-
-                     
-
-  
-
-                      
-
-  
-
-                    }catch(e){}
-
-                     
-
-  
-
-                   try{
-
-                      
-
- 
-
-                     
-
-  
-
-                      
-
-  
-
-                    }catch(e){}
-
-                     
-
-  
-
-                   try{
-
-                      
-
- 
-
-                     
-
-  
-
-                      
-
-  
-
-                    }catch(e){}
-
-                     
-
-  
-
-                   try{
-
-                      
-
- 
-
-                    }catch(e){}
-
-                    
-
-  
-
-                    try{
-
-                      
-
- 
-
-                    }catch(e){}
-
-                     
-
-  
-
-                    try{
-
-                      
-
- 
-
-                    }catch(e){}
-
-                     
-
-  
-
-                    try{
-
-                      
-
- 
-
-                    }catch(e){}
-
-                     
-
-  
-
-                    try{
-
-                      
-
- 
-
-                    }catch(e){}
-
-                     
-
-  
-
-               }
-
-             }
-
-           }
-
-         }
-
-       }
-
-      
-
-
-
+    // Health bar bg
+    ctx.strokeStyle="#fff";
+    ctx.lineWidth=3;
+    ctx.strokeRect(canvas.width-220,14,180,24);
     
-
-      
-
-
-
-// Viewport scroll (player centered)
-
-let camY = clamp(player.y-canvas.height/2+100,0,900-canvas.height);
-
-// Player controls (WASD/arrows)
-
-if(keys["ArrowLeft"]||keys["a"]) { player.x-=player.speed; player.facingRight=false; }
-
-if(keys["ArrowRight"]||keys["d"]) { player.x+=player.speed; player.facingRight=true; }
-
-if((keys["ArrowUp"]||keys["w"])&&player.onGround) { player.vy=-12; player.onGround=false;}
-
-if(keys[" "]&&!player.attacking&&player.attackTimer<=0){ player.attacking=true; player.attackTimer=12; }
-
-// Gravity/jump/floor clamp
-
-player.vy+=.9;if(player.vy>12)player.vy=12; player.y+=player.vy;
-
-if(player.y>900-player.h/2) { player.y=900-player.h/2; player.vy=0; player.onGround=true;}
-
-if(player.x<player.w/2)player.x=player.w/2;if(player.x>canvas.width-player.w/2)player.x=canvas.width-player.w/2;
-
-// Draw Player
-
-ctx.save();
-
-let px = player.x;
-
-let py = player.y-camY;
-
-ctx.translate(px,py);
-
-// Shadow
-
-ctx.save();ctx.globalAlpha=.27;ctx.scale(1,.31);ctx.beginPath();ctx.arc(0,(player.h/2)+20,(player.w),0,Math.PI*2);ctx.closePath();ctx.fillStyle="#222";ctx.fill();ctx.restore();
-
-// Body (simple block for demo)
-
-ctx.save();
-
-if(player.attacking){
-
-if(player.facingRight){
-
-ctx.rotate(-Math.PI/7);
-
-}else{
-
-ctx.rotate(Math.PI/7);
-
+    // Health bar fill (forge orange)
+    let grad=ctx.createLinearGradient(canvas.width-220,14,canvas.width-40,14);
+    grad.addColorStop(0,"#ffe898"); grad.addColorStop(.5,"#ff7200"); grad.addColorStop(1,"#bc3cff");
+    
+    ctx.fillStyle = grad;
+    ctx.globalAlpha=.88;
+    ctx.fillRect(canvas.width-220+2,16,hpBarW-4,20);
+    
+    // Health text
+    ctx.globalAlpha=1;
+    ctx.font="bold italic 18px Segoe UI";
+    ctx.textAlign="right";
+    ctx.fillStyle="#fff";
+    ctx.fillText("HEALTH: "+hp+"%",canvas.width-44,32);
+    
+   // Character label portrait (mini)
+   let r=17,xp=18;
+   ctx.save();
+   ctx.beginPath();ctx.arc(xp+14,26,r+3,0,Math.PI*2);ctx.closePath();
+   ctx.strokeStyle="#fff";ctx.lineWidth=3;ctx.globalAlpha=.7;ctx.stroke();
+   ctx.beginPath();ctx.arc(xp+14,26,r,0,Math.PI*2);ctx.closePath();ctx.globalAlpha=.9;ctx.fillStyle=char.color;ctx.fill();
+   // Initial
+   ctx.globalAlpha=1;ctx.font="italic bold 19px Segoe UI";ctx.textAlign="center";
+   ctx.fillStyle="#fff";ctx.fillText(char.name[0],xp+14,31);
+   ctx.restore();
+   
+   // Quit to title via Esc
+   if(keys["Escape"]) { state = "title"; keys["Escape"] = false; }
+  
 }
 
+// === Draw Glowing Button ===
+function drawButton(x,y,w,h,text,isActive) {
+  ctx.save();
+  if(isActive) {
+    let glowGrad = ctx.createLinearGradient(x,y,x+w,y+h);
+    glowGrad.addColorStop(0,'#ffb347');
+    glowGrad.addColorStop(.7,'#bc3cff');
+    glowGrad.addColorStop(1,'#18141e');
+    ctx.shadowBlur =8;ctx.shadowColor='#ffb347';
+    ctx.globalAlpha=.95;
+    ctx.fillStyle = glowGrad;
+    ctx.fillRect(x,y,w,h);
+    ctx.shadowBlur =0;
+    
+    // Border effect
+    ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.globalAlpha=.8;
+    ctx.strokeRect(x,y,w,h);
+    
+    // Text
+    ctx.font="bold italic 22px Segoe UI";
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.globalAlpha =1; 
+    ctx.fillStyle='#fff';
+    ctx.fillText(text,x+w/2,y+h/2);
+    
+  } else {
+    // Disabled state
+    ctx.globalAlpha=.5;
+    ctx.fillStyle='#333';ctx.fillRect(x,y,w,h);
+    ctx.strokeStyle='#888';ctx.lineWidth=1.5;
+    ctx.strokeRect(x,y,w,h);
+    
+    // Text
+    ctx.font="bold italic 22px Segoe UI";
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.globalAlpha =.8; 
+    ctx.fillStyle='#bbb';
+    ctx.fillText(text,x+w/2,y+h/2);
+    
+  }
+  
+  ctx.restore();
 }
 
-ctx.globalAlpha=.95;
-
-ctx.strokeStyle="#fff";
-
-ctx.lineWidth=3;
-
-ctx.beginPath();
-
-ctx.arc(0,-player.h/4-8,(player.w/3),Math.PI*2,false); // Head
-
-ctx.closePath();
-
-ctx.stroke();
-
-ctx.globalAlpha=.99;
-
-ctx.beginPath();
-
-let gradP = ctx.createLinearGradient(-player.w/2,-player.h/2,+player.w/2,+player.h/2);
-
-gradP.addColorStop(0,"#fff");
-
-gradP.addColorStop(.35,"#bc3cff");
-
-gradP.addColorStop(.7,"#ff720066");
-
-gradP.addColorStop(1,"#222");
-
-ctx.fillStyle=gradP;
-
-ctx.rect(-player.w/2,-player.h/4,(player.w),(player.h*.81));
-
-ctx.closePath();
-
-ctx.stroke();
-
-ctx.globalAlpha=.82;
-
-ctx.beginPath();
-
-ctx.arc(0,-player.h/4-8,(player.w/3),Math.PI*2,false);
-
-ctx.closePath();
-
-ctx.stroke();
-
-
-
-// Faction Color overlay
-
-if(player.facingRight){
-
-ctx.save();ctx.globalAlpha=.23;ctx.rotate(-Math.PI/22);ctx.beginPath();ctx.arc(-6,-player.h/6-8,(player.w/.9),Math.PI*2,false);ctx.closePath();ctx.strokeStyle=player.color;ctx.lineWidth=12;ctx.stroke();ctx.restore();
-
-}else{
-
-ctx.save();ctx.globalAlpha=.23;ctx.rotate(Math.PI/22);ctx.beginPath();ctx.arc(+6,-player.h/6-8,(player.w/.9),Math.PI*2,false);ctx.closePath();ctx.strokeStyle=player.color;ctx.lineWidth=12;ctx.stroke();ctx.restore();
-
-}
-
-// Weapon swing (attack)
-
-if(player.attacking){
-
-// Sword/shield effect (demo)
-
-let ax = player.facingRight?player.w*.66:-player.w*.66;
-
-let ay=-10;
-
-let gradW = ctx.createLinearGradient(ax-16,-30+(ay),ax+16,+26+(ay));
-
-gradW.addColorStop(0,"#ffb347");
-
-gradW.addColorStop(.5,"#fff");
-
-gradW.addColorStop(.95,"#bc3cff");
-
-gradW.addColorStop(1,"#222");
-
-ctx.save();
-
-if(player.facingRight)
-
-{ 
-
-// Right swing arc
-
-for(let k=-10;k<=10;k+=5){
-
-let arcAng=(Math.PI*(k)/22)+(Date.now()%400)/20000;;
-
-let rlen = player.w*1.08+(k==10?10:k==5?6:k==(-5)?3:k==(-10)?4:(k%4)*3)
-
-let sx=ax+k/sz+(k==10?4:k==(-10)?-4:k==5?3:k==(-5)?-3:k==(-7)?-5:k==7?5:0);
-
-let sy=ay+k/sz+(k==10?8:k==(-10)?-8:k==5?5:k==(-5)?-5:k==(-7)?-6:k==7?6:0);
-
-sx=Math.floor(sx);sy=Math.floor(sy);
-
-rlen=Math.max(rlen-player.attackTimer*.45,.01);
-
-
-
-try{
-
-// Swing curve effect (glow)
-
-if(k%10==5){
-
-// Glow effect overlayed for even k's only for demo visual variety.
-
-let gradGlow = gradW;
-
-if(k%4==0){ gradGlow = "#bc3cff88"; } else { gradGlow = "#ffb34788"; }
-
-}
-
-
-
-}catch(e){}
-
-} 
-
-
-
-}else{
-
-
-
-}
-
-
-
-
-
-}
-
-
-
-if(--player.attackTimer<=0){
-
-player.attacking=false;
-
-}
-
-
-
-}
-
-
-
-}
-
-
-else{ }
-
-
-
-// End Player draw
-
-
-
-// Enemies
-
-
-
-for(let e of enemies){
-
-if(!e.alive)continue;
-
-// AI move toward player vertically or horizontally at random intervals.
-
-if(Date.now()%140<70){
-
-if(player.x < e.x)e.x-=e.vx*.65;
-
-else e.x+=e.vx*.65;
-
-
-
-if(player.y < e.y)e.y-=e.vx*.55;
-
-else e.y+=e.vx*.55;
-
-
-
-}
-
-// Clamp to arena 
-
-e.x = clamp(e.x,e.w/2,canvas.width-e.w/2);
-
-e.y = clamp(e.y,e.h/2+40,e.h/2+900);
-
-// Draw enemy simple block
-
-let ex=e.x;
-
-let ey=e.y-camY;
-
-// Shadow 
-
-ctx.save();
-
-ctx.globalAlpha=.19;
-
-ctx.scale(1,.26);
-
-ctx.beginPath();
-
-ctx.arc(ex,(ey)+(e.h*1.44),e.w*1.05,0,Math.PI*2);
-
-ctx.closePath();
-
-ctx.fillStyle="#111";
-
-ctx.fill();
-
-ctx.restore();
-
-// Body (block)
-
-if(e.hp>10) { 
-	ctx.save(); 
-	ctx.globalAlpha=.88; 
-	ctx.beginPath(); 
-	ctx.rect(ex-e.w/2,ey-e.h/2,e.w,e.h); 
-	ctx.closePath(); 
-	ctx.strokeStyle="#fff";
-	ctx.lineWidth=3; 
-	ctx.stroke(); 
-	ctx.globalAlpha=.93; 
-	ctx.beginPath(); 
-	let gradE = ctx.createLinearGradient(ex-e.w/2,ey-e.h/2,ex+e.w/2,e.h); 
-	gradE.addColorStop(0,"#ceeaff"); 
-	gradE.addColorStop(.7,"#325c85"); 
-	gradE.addColorStop(1,"#222"); 
-	ctx.fillStyle=gradE; 
-	ctx.rect(ex-e.w/2+1.5,ey-e.h/2+1.5,e.w-3,e.h-3); 
-	ctx.closePath(); 
-	ctx.fill(); 
-	ctx.restore();
-} else {
-	// Damaged/enraged
-	ctx.save();
-	ctx.globalAlpha=.89-.14*Math.sin(Date.now()/150);
-	ctx.beginPath();
-	ctx.rect(ex-e.w/2,ey-e.h/2,e.w,e.h);
-	ctx.closePath();
-	ctx.strokeStyle="#bc3cff";
-	ctx.lineWidth=3;
-	ctx.stroke();
-	ctx.globalAlpha=.93-.19*Math.sin(Date.now()/123);
-	ctx.beginPath();
-	let gradE = "#bc3cff77";
-	ctx.fillStyle=gradE;
-	ctx.rect(ex-e.w/2+1.5,ey-e.h/2+1.5,e.w-3,e.h-3);
-	ctx.closePath();
-	ctx.fill();
-	ctx.restore();
-}
-// Attack logic (touch)
-if(Math.abs(player.x-e.x)<36&&Math.abs(player.y-e.y)<44){
-	if(!player.invuln&&Date.now()%90<50){
-		player.hp-=e.atk|1;
-		player.invuln=true;
-		setTimeout(()=>{player.invuln=false},350);
-		combo=0;
-	}
-}
-// Hit/destroy logic (melee attack)
-if(player.attacking && Math.abs(player.x-e.x)<54 && Math.abs(player.y-e.y)<52){
-	e.hp-=player.atk|10;
-	if(e.hp<=0 && e.alive){
-		e.alive=false;
-		score+=100*(combo>=5?(combo>=20?3:(combo>=10?2:1)):1);
-		combo++; maxCombo=Math.max(maxCombo,combo);
-	}
-}
-}
-// Remove dead enemies
-enemies=enemies.filter(e=>e.alive);
-// Next scene when all dead!
-if(enemies.length===0){
-	sceneIdx++;
-	if(sceneIdx>=LEVELS[selectedLevel].scenes.length){
-		// WIN! (not implemented yet)
-		state="gameover";
-	} else {
-		spawnEnemies();
-	}
-}
-// HUD
-drawHUD();
-// Death/game over
-if(player.hp<=0){
-	state="gameover";
-}
-}
-function drawHUD(){
-	// Top bar panel
-	ctx.save();
-	ctx.globalAlpha=.81;
-	ctx.fillStyle="#22384b";
-	ctx.fillRect(0,0,canvas.width,54);
-	ctx.restore();
-	// Score
-	ctx.font="bold italic 24px Segoe UI";
-	ctx.textAlign="left";
-	ctx.fillStyle="#f7e17c";
-	ctx.fillText("Score "+score.toLocaleString(),24,36);
-	// Combo
-	let mult = combo>=30?4:(combo>=20?3:(combo>=15?2.5:(combo>=10?2:combo>=5?1.5:1)));
-	if(combo>1){
-		ctx.font="italic bold "+(combo>=20?"30":"24")+"px Segoe UI";
-		ctx.textAlign="center";
-		let col=combo>=30?"#bc3cff":combo>=15?"#ff7200":"#18d860";
-		ctx.shadowColor=col; 
-		ctx.shadowBlur=14;
-		ctx.globalAlpha=.94-.13*Math.sin(Date.now()/220);
-		ctx.fillStyle=col;
-		ctx.fillText(combo+"x ("+mult.toFixed(1)+"x)",canvas.width/2+40*(mult-1),36);
-		ctx.shadowBlur=0; 
-	}
-	// Health bar
-	let pct = Math.max(player.hp/player.hp|100,.01); pct=pct>1?1:pct;
-	let barw=pct*240;
-	let xh=canvas.width-290,yh=18;
-	ctx.save();
-	ctx.strokeStyle="#fff"; 
-	ctx.lineWidth=3.5; 
-	ctx.globalAlpha=.97-.04*Math.sin(Date.now()/180);
-	let gradH = ctx.createLinearGradient(xh,yh,xh+barw,yh+18);
-	gradH.addColorStop(0,"#ff720088");
-	gradH.addColorStop(.25,"#f7e17c");
-	gradH.addColorStop(.55,"#bc3cff");
-	gradH.addColorStop(.99,"#22384b");
-	ctx.beginPath(); 
-	ctx.roundRect(xh,yh,pct*240|4|1|barw>4?barw:4|barw<240?barw|4|4|barw:240|barw<9?barw|9|barw<24?barw|24|barw:barw|barw:.01,.01|9); 
-	ctx.closePath(); 
-	ctx.stroke(); 
-	ctx.globalAlpha=.91-.09*Math.sin(Date.now()/170); 
-	ctx.beginPath();
-	ctx.roundRect(xh,yh,pct*240|4|barw>4?barw:4|barw<240?barw|4|4|barw:240|barw<9?barw|9|barw<24?barw|24|barw:barw|barw:.01,.01|9); 
-	ctx.closePath();
-	ctx.fillStyle=gradH;
-	ctx.globalAlpha=.93-.07*Math.sin(Date.now()/150);
-	ctx.roundRect(xh+3,yh+3,pct*(240-6)|4,.01|9); 
-	ctx.closePath();
-	ctx.fill();
-	ctx.restore();
-}
-// Helpers
-function clamp(val,min,max){ return Math.max(min,Math.min(val,max)); }
-    </script>
+</script>
 </body>
 </html>
