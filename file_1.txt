@@ -1,0 +1,5 @@
+# If you made changes (e.g., pasted new AI-generated code)
+git status            # See what changed
+git add maingame      # Or whatever filename you changed
+git commit -m "Update maingame with new prototype"
+git push              # Upload to remote repository (e.g., GitHub)
