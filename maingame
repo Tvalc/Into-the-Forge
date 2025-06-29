@@ -10,88 +10,1064 @@
     #gameContainer { width:100vw; height:100vh; display:flex; justify-content:center; align-items:center; }
     canvas { display:block; background:#18121a; box-shadow:0 0 32px #222; }
     ::selection { background:#ffb34733; }
+    /* Basic custom button style for overlays */
+    .overlay-btn {
+      position: absolute;
+      left:50%; transform:translateX(-50%);
+      background:linear-gradient(90deg,#ffb347,#ff7200);
+      color:#fff;
+      font-size:22px;
+      font-family:'Segoe UI',Arial,sans-serif;
+      border:none;border-radius:8px;
+      padding:12px 38px;
+      box-shadow:0 2px 16px #2227;
+      cursor:pointer;
+      margin-top:18px;
+      letter-spacing:1px;
+    }
+    .overlay-btn:hover { background:linear-gradient(90deg,#ff9200,#bc3cff); }
+    #overlay { position:absolute; left:0; top:0; width:100vw; height:100vh; display:none; z-index:99;}
   </style>
 </head>
 <body>
-<div id="gameContainer">
+<div id="gameContainer" style="position:relative;">
   <canvas id="gameCanvas" width="800" height="600"></canvas>
+  <div id="overlay"></div>
 </div>
 <script>
-// --- BASIC GAME STATE ---
-let state = "title";
+/* --- DATA DEFINITIONS --- */
+const CHARACTERS = [
+  { name:"Korok", faction:"Tempys", unlockedAt:0, color:"#ff7200" },
+  { name:"Oros", faction:"Uterra", unlockedAt:10000, color:"#18d860" },
+  { name:"Cercee", faction:"Nekrium", unlockedAt:25000, color:"#bc3cff" },
+  { name:"Ironbeard", faction:"Alloyin", unlockedAt:50000, color:"#88c6ff" },
+  { name:"Ignir", faction:"Tempys", unlockedAt:100000, color:"#ff1a1a" },
+  { name:"Voss", faction:"Nekrium", unlockedAt:200000, color:"#9300c2" }
+];
+const LEVELS = [
+  { name:"The Frozen Wastes", unlockedAt:0 },
+  { name:"The Rootrealms", unlockedAt:25000 },
+  { name:"Brightsteel City", unlockedAt:50000 },
+];
+const SCENE_BACKGROUNDS = ["#2e3a5a", "#273548", "#222831"];
+
+/* --- STATE --- */
+let state = "title"; // title,charselect,levelselect,playing,pause,gameover
 let highScore = Number(localStorage.getItem("forgeborn_highscore")||"0");
+let currentScore = 0;
+let selectedCharIdx = 0;
+let selectedLevelIdx = 0;
+// Gameplay
+let player=null,enemies=[],combo=0,comboTimer=0,playerHealth=100,sceneY=0,sceneNum=0;
+let keys = {};
+let lastFrame = Date.now();
+let cameraY = 0;
+let gameTimer = 0;
+let overlay = document.getElementById("overlay");
 
-// --- CANVAS SETUP ---
-const canvas = document.getElementById('gameCanvas');
-const ctx = canvas.getContext('2d');
+/* --- CANVAS --- */
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
 
-// --- TITLE SCREEN DRAW ---
-function drawTitle() {
-  // BG Gradient
-  let grad = ctx.createLinearGradient(0,0,0,canvas.height);
-  grad.addColorStop(0,"#191723");
-  grad.addColorStop(1,"#502a11");
-  ctx.fillStyle = grad;
-  ctx.fillRect(0,0,canvas.width,canvas.height);
-
-  // Animated SolForge Tower
+/* --- UTILITY --- */
+function clamp(x,a,b){return Math.max(a,Math.min(b,x));}
+function lerp(a,b,t){return a+(b-a)*t;}
+function getUnlockedChars(){return CHARACTERS.filter(c=>highScore>=c.unlockedAt);}
+function getUnlockedLevels(){return LEVELS.filter(l=>highScore>=l.unlockedAt);}
+function drawButton(x,y,w,h,text,isActive){
   ctx.save();
-  let t = Date.now()/800;
-  ctx.translate(canvas.width/2,canvas.height/2-90 + Math.sin(t)*8);
-  ctx.fillStyle="#aaa";
-  ctx.fillRect(-32,-160,64,220);
-  ctx.strokeStyle="#ffb347";
-  ctx.lineWidth=6;
-  ctx.beginPath();ctx.arc(0,-160,32,Math.PI*2,false);ctx.stroke();
-  // Corruption effect
-  ctx.globalAlpha=0.18+Math.abs(Math.sin(t*1.3))*0.12;
-  ctx.fillStyle="#9d2cff";
-  ctx.beginPath();
-  ctx.arc(18,-140+Math.cos(t)*16,16+Math.sin(t*1.9)*4,0,Math.PI*2);
-  ctx.fill();
-  ctx.globalAlpha=1;
-  ctx.restore();
-
-  // Main Title
-  ctx.fillStyle="#ffb347";
-  ctx.font="bold 46px Segoe UI";
-  ctx.textAlign="center";
-  ctx.shadowColor="#602f07";ctx.shadowBlur=14;
-  ctx.fillText("FORGEBORN:",canvas.width/2,110);
+  ctx.globalAlpha = isActive ? 1 : .5;
+  ctx.fillStyle = isActive ? "#ff9200" : "#555";
+  ctx.fillRect(x,y,w,h);
+  ctx.strokeStyle="#fff";
+  ctx.lineWidth=2;
+  ctx.strokeRect(x,y,w,h);
   ctx.fillStyle="#fff";
-  ctx.font="bold italic 36px Segoe UI";
-  ctx.shadowBlur=8;ctx.shadowColor="#bc3cff";
-  ctx.fillText("SOLSTICE BREAK",canvas.width/2,160);
-  ctx.shadowBlur=0;
-
-  // High Score
-  ctx.font="bold 26px Segoe UI";ctx.fillStyle="#f7e17c";
-  ctx.fillText("High Score: "+highScore.toLocaleString(),canvas.width/2,260);
-
-  // Prompt
-  let blink=(Math.floor(Date.now()/500)%2)==0;
-  if(blink){
-      ctx.font="bold italic 28px Segoe UI";
-      ctx.fillStyle="#fff";
-      ctx.fillText("[ Press Any Button to Start ]",canvas.width/2,340);
-  }
+  ctx.font="bold 28px Segoe UI";
+  ctx.textAlign="center";
+  ctx.textBaseline="middle";
+  ctx.fillText(text,x+w/2,y+h/2);
+  ctx.restore();
 }
 
-// --- MAIN LOOP ---
-function loop() {
-    if(state==="title") drawTitle();
-    // (In future: other states here)
-    requestAnimationFrame(loop);
-}
-loop();
+/* --- TITLE SCREEN --- */
+function drawTitle(){
+    // BG
+    let grad=ctx.createLinearGradient(0,0,0,canvas.height);
+    grad.addColorStop(0,"#191723"); grad.addColorStop(1,"#502a11");
+    ctx.fillStyle=grad;ctx.fillRect(0,0,canvas.width,canvas.height);
 
-// --- INPUT TO ADVANCE (future screens not yet implemented) ---
-window.addEventListener("keydown", () => {
-    //state = "charselect"; // for future expansion
-});
-window.addEventListener("mousedown", () => {
-    //state = "charselect"; // for future expansion
-});
-</script>
-</body>
-</html>
+    // Animated Solforge Tower
+    ctx.save();
+    let t=Date.now()/800;
+    ctx.translate(canvas.width/2,canvas.height/2-90 + Math.sin(t)*8);
+    ctx.fillStyle="#aaa";ctx.fillRect(-32,-160,64,220);
+    ctx.strokeStyle="#ffb347";ctx.lineWidth=6;
+    ctx.beginPath();ctx.arc(0,-160,32,Math.PI*2,false);ctx.stroke();
+    // Corruption effect
+    ctx.globalAlpha=0.18+Math.abs(Math.sin(t*1.3))*0.12;
+    ctx.fillStyle="#9d2cff";ctx.beginPath();
+    ctx.arc(18,-140+Math.cos(t)*16,16+Math.sin(t*1.9)*4,0,Math.PI*2);ctx.fill();
+    ctx.globalAlpha=1;ctx.restore();
+
+    // Title
+    ctx.fillStyle="#ffb347";
+    ctx.font="bold 46px Segoe UI";
+    ctx.textAlign="center";
+    ctx.shadowColor="#602f07";ctx.shadowBlur=14;
+    ctx.fillText("FORGEBORN:",canvas.width/2,110);
+    ctx.fillStyle="#fff";
+    ctx.font="bold italic 36px Segoe UI";
+    ctx.shadowBlur=8;ctx.shadowColor="#bc3cff";
+    ctx.fillText("SOLSTICE BREAK",canvas.width/2,160);
+    ctx.shadowBlur=0;
+
+    // High Score
+    ctx.font="bold 26px Segoe UI";ctx.fillStyle="#f7e17c";
+    ctx.fillText("High Score: "+highScore.toLocaleString(),canvas.width/2,260);
+
+    // Prompt
+    let blink=(Math.floor(Date.now()/500)%2)==0;
+    if(blink){
+        ctx.font="bold italic 28px Segoe UI";
+        ctx.fillStyle="#fff";
+        ctx.fillText("[ Press Any Button to Start ]",canvas.width/2,340);
+    }
+}
+
+/* --- CHARACTER SELECT --- */
+function drawCharSelect(){
+    // BG
+    ctx.fillStyle="#262335";ctx.fillRect(0,0,canvas.width,canvas.height);
+    // Title
+    ctx.font="bold 34px Segoe UI";
+    ctx.fillStyle="#ffb347";
+    ctx.textAlign="center";
+    ctx.fillText("Choose Your Forgeborn",canvas.width/2,64);
+
+    let chars=CHARACTERS;
+    let spacing=110,x0=canvas.width/2-(chars.length-1)*spacing/2;
+
+    for(let i=0;i<chars.length;++i){
+        let x=x0+i*spacing,y=180,r=48;
+        let isUnlocked=highScore>=chars[i].unlockedAt;
+        // Portrait circle
+        ctx.save();
+        ctx.beginPath();ctx.arc(x,y,r+8,0,Math.PI*2);ctx.closePath();
+        ctx.globalAlpha=isUnlocked?1:.15;
+        ctx.strokeStyle="#fff";ctx.lineWidth=(i==selectedCharIdx)?7:3;ctx.stroke();
+        // Faction color
+        ctx.beginPath();ctx.arc(x,y,r,0,Math.PI*2);ctx.closePath();
+        ctx.fillStyle=chars[i].color;ctx.globalAlpha=isUnlocked?.85:.19;ctx.fill();
+        if(!isUnlocked){
+            ctx.globalAlpha=.5;ctx.fillStyle="#222";
+            ctx.beginPath();ctx.arc(x,y,r-4,0,Math.PI*2);ctx.closePath();ctx.fill();
+        }
+        // Char initial
+        ctx.globalAlpha=1;ctx.font="bold italic 38px Segoe UI";
+        ctx.fillStyle="#fff";ctx.textAlign="center";
+        ctx.fillText(chars[i].name[0],x,y+7);
+
+        // Lock info
+        if(!isUnlocked){
+            ctx.font="16px Segoe UI";ctx.fillStyle="#ffb347";
+            ctx.fillText("Unlocks @ "+chars[i].unlockedAt,x,y+r+24);
+        }
+        if(i==selectedCharIdx){
+            ctx.font="italic bold 20px Segoe UI";ctx.fillStyle="#fff";
+            ctx.fillText(chars[i].name+" ("+chars[i].faction+")",x,y+r+44);
+            if(isUnlocked){
+                drawButton(x-48,y+r+56,96,36,"SELECT",true);
+            }
+        }
+        ctx.restore();
+    }
+}
+
+/* --- LEVEL SELECT --- */
+function drawLevelSelect(){
+    // BG
+    ctx.fillStyle="#232e35";ctx.fillRect(0,0,canvas.width,canvas.height);
+    // Title
+    ctx.font="bold 34px Segoe UI";
+    ctx.fillStyle="#ffb347";
+    ctx.textAlign="center";
+    ctx.fillText("Select Level",canvas.width/2,64);
+
+    let levels=LEVELS;
+    let spacing=70,y0=140;
+
+    for(let i=0;i<levels.length;++i){
+        let y=y0+i*spacing,x=canvas.width/2-120,w=240,h=52;
+        let isUnlocked=highScore>=levels[i].unlockedAt;
+
+        // BG box
+        ctx.save();ctx.globalAlpha=isUnlocked?1:.25;
+        ctx.strokeStyle=isUnlocked?"#f7e17c":"#555";ctx.lineWidth=(i==selectedLevelIdx)?4:2;
+        ctx.strokeRect(x,y,w,h);
+        // Preview BG color block for demo
+        if(isUnlocked){
+            ctx.fillStyle=SCENE_BACKGROUNDS[i%SCENE_BACKGROUNDS.length];
+            ctx.globalAlpha=.13;ctx.fillRect(x,y,w,h);
+        }
+
+        // Level name
+        ctx.font="bold italic 26px Segoe UI";ctx.textAlign="left";ctx.globalAlpha=isUnlocked?1:.4;
+        ctx.fillStyle=isUnlocked?"#fff":"#888";
+        ctx.fillText(levels[i].name,x+18,y+33);
+
+        // Lock info
+        if(!isUnlocked){
+            ctx.font="16px Segoe UI";ctx.fillStyle="#ffb347";ctx.globalAlpha=.9;
+            ctx.textAlign="center";
+            ctx.fillText("Unlocks @ "+levels[i].unlockedAt,x+w/2,y+h+23);
+        }
+
+        // Select button if unlocked & selected
+        if(isUnlocked && i==selectedLevelIdx){
+            drawButton(x+w+14,y+6,92,38,"PLAY",true);
+        }
+        ctx.restore();
+    }
+}
+
+/* --- GAMEPLAY SCENE (VERTICAL SLICE) --- */
+function resetGameplay(){
+   // Reset all state for a new run
+   player={
+      x:canvas.width/2,
+      y:120,
+      vx:0,
+      vy:0,
+      w:44,h:68,
+      col:getUnlockedChars()[selectedCharIdx].color,
+      onGround:true,
+      facingRight:true,
+      attackTimer:0,
+      attackCd:0,
+      hp:100,
+   };
+   enemies=[];
+   combo=0; comboTimer=0; playerHealth=100; sceneY=0; cameraY=0; sceneNum=0;
+   currentScore=0; gameTimer = 60 * 60 * 3; // ~3 minutes max for vertical slice
+   spawnEnemy(); spawnEnemy(); spawnEnemy();
+}
+// --- ENEMY SPAWN ---
+function spawnEnemy(){
+   let ex=Math.random()*(canvas.width-120)+60;
+   let ey=cameraY+Math.random()*180+320;
+   enemies.push({
+     x:ex,y:ey,w:38,h:46,hp:10,vx:(Math.random()>.5?1:-1)*.8,
+     vy:0,col:"#bc3cff",alive:true,type:"darkforged"
+   });
+}
+
+function updateGameplay(dt){
+   cameraY = lerp(cameraY, Math.max(player.y-280,sceneY), .06);
+
+   // Player physics and input
+   const spd = 4.4;
+   if(keys["ArrowLeft"]||keys["a"]){ player.vx=-spd; player.facingRight=false;}
+   else if(keys["ArrowRight"]||keys["d"]){ player.vx=spd; player.facingRight=true;}
+   else player.vx*=.69;
+
+   if((keys["ArrowUp"]||keys["w"]||keys[" "]) && player.onGround){
+      player.vy=-11.7; player.onGround=false;
+   }
+   player.vy+=.79; // gravity
+
+   // Move & ground collision
+   player.x+=player.vx; player.y+=player.vy;
+   player.x=clamp(player.x-player.w/2,+30,+canvas.width-30)+player.w/2;
+
+   if(player.y>sceneY+500-player.h){ player.y=sceneY+500-player.h; player.vy=0; player.onGround=true;}
+   else player.onGround=false;
+
+   // Attack (space or z)
+   if((keys["z"]||keys["k"]) && player.attackCd<=0){ player.attackTimer=9; player.attackCd=18;}
+   if(player.attackCd>0) player.attackCd--;
+
+   // Enemies update
+   for(let e of enemies){
+     if(!e.alive) continue;
+     e.x+=e.vx;
+     // Bounce off walls
+     if(e.x<40||e.x>canvas.width-40) e.vx*=-1;
+
+     // Simple chase AI if close to player
+     if(Math.abs(e.x-player.x)<160) e.vx+=(player.x>e.x?1:-1)*.09;
+
+     // Attack zone check (simple melee)
+     let hit=false;
+     if(player.attackTimer>0 &&
+       Math.abs(e.x-player.x)<54 && Math.abs(e.y-player.y)<56){
+         e.hp-=11+Math.random()*4|0; hit=true;
+         currentScore+=150+(combo*10|0); combo++; comboTimer=70;
+         e.vx+=(player.facingRight?1:-1)*4.7; e.vy=-4-Math.random()*4|0;
+         if(e.hp<=0){ e.alive=false;}
+     }
+     // Enemy "gravity"
+     e.vy+=.55;e.y+=e.vy;if(e.y>sceneY+500-e.h){e.y=sceneY+500-e.h;e.vy*=-.24;}
+     // Touches player? Hurt!
+     if(e.alive && Math.abs(e.x-player.x)<38 && Math.abs(e.y-player.y)<44 && player.attackTimer<=0){
+       playerHealth-=10+(Math.random()*5|0); combo=0;
+       e.vx+=(player.x>e.x?-1:1)*7.7;e.vy=-9-Math.random()*6|0;
+       if(playerHealth<=0){state="gameover";}
+     }
+   }
+   enemies = enemies.filter(e=>e.alive||(e.y<cameraY+700)); // Remove dead/out-of-bounds
+
+   // Combo decay
+   if(combo>0){ comboTimer--;if(comboTimer<=0){combo=0;} }
+
+   // End/gameover conditions for vertical slice:
+   gameTimer--;
+   if(gameTimer<=0 || playerHealth<=0) state="gameover";
+
+   // Spawn new enemies periodically for challenge:
+   if(enemies.length<4 && Math.random()<.015) spawnEnemy();
+
+   if(player.attackTimer>0)player.attackTimer--;
+}
+
+/* --- DRAW GAMEPLAY --- */
+function drawGameplay(){
+   // BG vertical scroll gradient (simulate tundra)
+   let bgCol=["#26304c","#415d81","#fff"];
+   var grad = ctx.createLinearGradient(400,cameraY-200,400,cameraY+600);
+   grad.addColorStop(0,bgCol[1]);
+   grad.addColorStop(.62,bgCol[2]);
+   grad.addColorStop(1,bgCol[0]);
+   ctx.fillStyle = grad;
+   ctx.fillRect(0,0,canvas.width,canvas.height);
+
+   // Scene "floor"
+   ctx.save();
+   ctx.translate(0,-cameraY);
+   for(let i=sceneY;i<sceneY+600;i+=80){
+       ctx.fillStyle=i%160===0?"#344465":"#29406c";
+       ctx.fillRect(30,i+487,740,13);
+       if(i%160===0){
+           for(let x=60;x<760;x+=90){
+               ctx.globalAlpha=.11+Math.random()*.18;
+               ctx.beginPath();ctx.arc(x,i+489+Math.random()*5|0,(12+Math.random()*15)|0,Math.PI*2, false);ctx.fill();
+           }
+           ctx.globalAlpha=1;
+       }
+   }
+
+   // Player
+   let p = player;
+   let px=p.x-p.w/2,py=p.y-p.h/2;
+   // Shadow
+   ctx.save();ctx.globalAlpha=.18;
+   ctx.beginPath();ctx.ellipse(p.x,p.y+p.h/2+12,p.w*.6,p.h*.22,Math.PI/10,0,Math.PI*2);ctx.fillStyle="#000";ctx.fill();
+   ctx.globalAlpha=1;
+
+   // Body
+   ctx.save();
+   if(p.attackTimer>5)ctx.rotate((p.facingRight?1:-1)*.13);
+   else if(!p.onGround)ctx.rotate((p.facingRight?1:-1)*.06);
+   else if(Math.abs(p.vx)>3)ctx.rotate((p.facingRight?1:-1)*.03);
+   let face=p.facingRight?1:-1;
+
+   // Main body (faction color)
+   ctx.translate(p.x,p.y);
+   ctx.scale(face,1);
+   ctx.beginPath();ctx.moveTo(-22,-27);ctx.lineTo(22,-27);ctx.lineTo(19,+28);ctx.lineTo(-19,+28);ctx.closePath();
+   ctx.globalAlpha=.92;
+   ctx.fillStyle=p.col;ctx.shadowColor="#ffb347";ctx.shadowBlur=p.attackTimer>5?19:5;
+   ctx.fill();ctx.shadowBlur=0;
+
+   // Arms/sword simple shape
+   if(p.attackTimer>5){
+      ctx.save();ctx.rotate(.45);ctx.fillStyle="#fff7e6";
+      ctx.fillRect(24,-12+p.attackTimer*3|0,23+(p.attackTimer*4),8-(p.attackTimer*1));
+      ctx.restore();
+      // Fire effect for Korok's sword swing
+      for(let i=0;i<4;++i){
+         let ang=(.41+i*.17)+Math.random()*.21*(face);
+         let rlen=32+(p.attackTimer*5)+Math.random()*24|6;
+         let fx=Math.cos(ang)*rlen*Math.random()+42*Math.random(),fy=Math.sin(ang)*rlen*Math.random()+8*Math.random()-15+p.attackTimer*3|4;
+         ctx.globalAlpha=.18+Math.random()*.22;ctx.beginPath();
+         ctx.arc(28+fx,-12+fy,(7+p.attackTimer),Math.PI*2,false);
+         ctx.fillStyle="#ffb347";ctx.fill();
+      }
+      ctx.globalAlpha=1;
+   }else{
+     // Idle arms/sword
+     ctx.save();ctx.rotate(.08);ctx.fillStyle="#ffeab6";
+     ctx.fillRect(24,-6+p.attackTimer*2|8,20+(p.attackTimer),8-(p.attackTimer));
+     ctx.restore();
+   }
+
+   // Head
+   ctx.beginPath();ctx.arc(3,-27-face*6*p.onGround,.98*p.h/4.3+6,.09*Math.PI,.96*Math.PI,false);
+   ctx.closePath();ctx.strokeStyle="#fff7e6";ctx.lineWidth=3.8;ctx.stroke();
+   
+   // Eyes/glow
+   if(p.attackTimer>5){ 
+       for(let i=-5;i<=5;i+=10){
+         let eyeGlowCol=p.col=="#ff7200"?"#ffeab6":p.col=="#bc3cff"?"#fff":p.col;
+         let eyeX=(face==1?11:-11)+i/9|1;
+         let eyeY=-38+(Math.random()*3|1);
+         let r=(face==1?4.9:.8)+Math.abs(i)/9|2;p.col=="#ff7200"?r+=.7:r-=.4;
+         ctx.globalAlpha=.25+.17*Math.abs(i)/6|.13;
+         ctx.beginPath();ctx.arc(eyeX-3*p.facingRight,-29,r,.91*Math.PI,.09*Math.PI,false);ctx.closePath();
+         ctx.strokeStyle=eyeGlowCol;ctx.lineWidth=r*.7|2;ctx.stroke();
+       }
+       ctx.globalAlpha=.91;
+       for(let i=-5;i<=5;i+=10){
+         let eyeX=(face==1?11:-11)+i/9|1;
+         let eyeY=-38+(Math.random()*2|1);
+         let r=(face==1?2+.9*i/9:.8)+Math.abs(i)/15|1;p.col=="#ff7200"?r+=.5:r-=.15;
+         if(face==-1)eyeX-=3;
+         ctx.beginPath();ctx.arc(eyeX,-29,r,.91*Math.PI,.09*Math.PI,false);ctx.closePath();
+         ctx.strokeStyle="#fff";ctx.lineWidth=r*.55|2;ctx.stroke();
+       }
+       //
+       }
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+
+   
+   
+   
+   
+   
+
+   
+   
+   
+   
+   
+   
+
+   
+
+   
+   
+
+   
+
+   
+   
+   
+
+   
+
+   
+
+   
+   
+
+   
+
+   
+
+   
+
+   
+
+   
+   
+   
+   
+   
+
+   
+   
+
+   
+
+   
+
+   
+
+   
+   
+
+   
+
+   
+
+   
+   
+
+   
+
+   
+
+   
+
+   
+
+   
+
+   
+   
+   
+   
+   
+
+   
+   
+
+   
+
+   
+
+   
+
+   
+   
+
+   
+
+   
+
+   
+   
+
+   
+
+   
+
+   
+
+   
+
+   
+
+   
+   
+   
+   
+   
+
+   
+   
+
+   
+
+   
+
+   
+
+   
+   
+
+   
+
+   
+
+   
+   
+
+   
+
+   
+
+   
+
+// End body/player
+   ctx.restore(); 
+// End shadow/player group
+   }
+
+   // Enemies (draw after player)
+for(let e of enemies){
+     if(!e.alive)continue;
+
+     let ex=e.x-e.w/2 , ey=e.y-e.h/2 ;
+     // Shadow
+     ctx.save(); 
+     let dead = !e.alive || e.hp<=0 ;
+     if(dead) continue;
+
+     let flicker=(e.type=="darkforged")?(Math.sin(Date.now()/110 + e.x/77 + e.y/48)*6):1 ;
+     let ek=e.type=="darkforged"? "#bc3cff":"#333";
+     // Body 
+     ctx.globalAlpha=.97-(dead?.34:.01)+(flicker*.01);
+     ctx.beginPath(); 
+     if(e.type=="darkforged"){
+       for(let i=12;i>4;i-=3){
+         let alpha=(i-4)/10*.19+(dead?.19:.01)+(flicker*.01);
+         let ccol=i%6==3?"#fff":ek ;
+         ctx.globalAlpha=Math.max(.11,i*.018)+alpha ;
+         let rad=(e.w+i*3)/2 ;
+         let cx=e.x+(Math.sin(Date.now()/333+i)*i),cy=e.y+(Math.cos(Date.now()/221-i)*i*.6) ;
+         //
+         //
+         //
+         //
+         //
+         //
+         //
+         //
+         //
+         //
+         //
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+         
+
+         
+         
+         
+         
+         
+         //
+         
+
+         
+
+
+         
+
+         //
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+         
+
+
+
+         
+
+         
+
+         
+
+
+
+         
+
+         
+
+
+         
+
+
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+           
+          
+        
+        
+
+        
+        
+
+        
+        
+
+        
+
+        
+        
+
+        
+        
+
+        
+
+        
+        
+
+        
+        
+
+        
+
+        
+        
+
+        
+        
+
+        
+
+        
+        
+
+        
+        
+
+        
+
+        
+        
+
+        
+        
+
+        
+
+        
+        
+
+        
+        
+
+        
+
+        
+        
+
+        
+        
+
+        
+
+        
+        
+
+        
+        
+
+        
+
+        
+        
+
+        
+        
+
+        
+        
+
+        
+        
+
+        
+        
+
+        
+
+        
+        
+
+        
+        
+
+        
+
+        
+        
+
+        
+        
+
+        
+
+        
+        
+
+        
+        
+
+        
+        
+        
+        
+        
+         
+         
+         
+         
+
+         
+         
+         
+         
+         
+         
+         
+         
+         
+
+         
+         
+         
+         
+         
+         
+         
+         
+         
+
+
+         //
+         //
+
+         //
+         //
+         //
+         //
+
+         //
+         //
+
+         //
+         //
+         //
+         //
+         //
+
+         //
+
+             //
+             //
+
+             
+             //
+             
+             //
+             //
+
+             //
+
+             //
+
+             //
+
+             //
+
+             //
+
+             //
+
+             //
+
+             //
+
+             //
+
+             //
+
+             //
+
+             //
+
+             //
+
+             //
+
+             //
+
+             //
+
+             
+             
+             
+             
+             
+             
+             
+            
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
+            
+            //
