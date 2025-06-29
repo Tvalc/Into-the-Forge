@@ -230,435 +230,257 @@ function drawLevelSelect(){
     }
 }
 
-// =================== GAMEPLAY ===================
-function startGameplay(){
-  state = "playing";
-  currentScore = 0;
-  playerHealth = 100;
-  combo = 0;
-  comboTimer = 0;
-  sceneY = 0;
-  player = {
-     x:GAME_WIDTH/2,
-     y:110,
-     vx:0,
-     vy:0,
-     w:42,h:68,
-     col:getUnlockedChars()[selectedCharIdx].color,
-     attacking:false,
-     attackTimer:0,
-     onGround:true,
-     facingRight:true,
-     name:getUnlockedChars()[selectedCharIdx].name,
-     speed:5,
-     gravity:.7,
-     jumpV:-9,
-     atkPower:10
-   };
-   enemies = [];
-   spawnEnemy(); spawnEnemy();
+// ================ GAMEPLAY SCENE (Vertical) ==================
+function startGamePlay(){
+    state="playing";
+    player={
+      x:GAME_WIDTH/2,
+      y:80,
+      vx:0,
+      vy:0,
+      w:42,h:68,
+      col:getUnlockedChars()[selectedCharIdx].color,
+      attacking:false,
+      attackTimer:0,
+      onGround:true,
+      facingRight:true,
+      comboTimer:null,
+      spriteFrame:0,
+      name:getUnlockedChars()[selectedCharIdx].name,
+      jumpV:-9,
+      speed:5,
+      gravity:.7,
+      hp:100,
+      atkPower:9,
+      specialReady:true
+    };
+    enemies=[];
+    currentScore=0;
+    combo=0;
+    comboTimer=0;
+    playerHealth=100;
+    sceneY=0;
 }
 
 function spawnEnemy(){
-   let ex=Math.random()*(canvas.width-120)+60;
-   let ey=sceneY+Math.random()*220+340;
+   let ex=Math.random()*(GAME_WIDTH-120)+60;
+   let ey=sceneY+Math.random()*180+320;
+   let type=Math.random()<.8?"basic":"elite";
    enemies.push({
-     x:ex,y:ey,vx:(Math.random()<.5?-1:1)*1.5+hscoreMod(),vy:0,w:40,h:54,
-     hp:18+Math.floor(currentScore/200),
-     col:"#bc3cff",
-     alive:true,
-     attackCD:Math.random()*80+40,
+     x:ex,y:ey,vx:type==="basic"?Math.random()<.5?1:-1:Math.random()<.5?1.5:-1.5,
+     vy:0,w:type==="basic"?38:54,h:type==="basic"?54:66,type:type,hp:type==="basic"?25:60,
+     color:type==="basic"?"#d8eafe":"#bc3cff",atk:type==="basic"?6:13,cooldown:60,idleTimer:30,
+     alive:true
    });
-}
-function hscoreMod(){ return Math.min(highScore/20000,.6); }
-
-function updateGameplay(dt){
-   // Player movement
-   if(keys["ArrowLeft"]||keys["a"]){player.x-=player.speed;}
-   if(keys["ArrowRight"]||keys["d"]){player.x+=player.speed;}
-   if((keys["ArrowUp"]||keys["w"]||keys[" "]) && player.onGround){player.vy=player.jumpV;player.onGround=false;}
-   player.vy+=player.gravity;
-   player.y+=player.vy;
-   player.x=clamp(player.x,28,GAME_WIDTH-28);
-
-   if(player.y+player.h>GAME_HEIGHT-30){ player.y=GAME_HEIGHT-30-player.h; player.vy=0; player.onGround=true;}
-   else player.onGround=false;
-
-   // Attack input (space/z)
-   if((keys["z"]||keys["x"]) && !player.attacking && player.onGround){player.attacking=true;player.attackTimer=14;}
-
-   if(player.attacking){
-      player.attackTimer--;
-      if(player.attackTimer<=0) player.attacking=false;
-   }
-
-   // Enemies AI & collision
-   for(let e of enemies){
-      if(!e.alive) continue;
-      let dx=e.x-player.x;
-      if(Math.abs(dx)>48) e.x+=dx>0?-e.vx:e.vx;
-
-      // Enemy attack (simple contact damage)
-      if(Math.abs(dx)<50 && Math.abs(e.y-player.y)<44 && !player.attacking && e.alive && !e.atkHit){
-          playerHealth-=12;combo=0;e.atkHit=true;setTimeout(()=>{e.atkHit=false},600);
-          if(playerHealth<=0){ endGame(false);}
-      }
-
-      // Player attack hitbox
-      if(player.attacking && Math.abs(e.x-player.x)<62 && Math.abs(e.y-player.y)<38 && e.alive){
-         e.hp-=player.atkPower;if(combo<99) combo++;
-         e.col="#f7e17c"; setTimeout(()=>{e.col="#bc3cff"},130);
-         if(e.hp<=0){e.alive=false;currentScore+=100*comboMult();comboFlash();}
-      }
-   }
-
-   // Remove dead enemies & respawn
-   for(let i=enemies.length-1;i>=0;i--) {
-      if(!enemies[i].alive) {enemies.splice(i,1); setTimeout(spawnEnemy,800);}
-   }
-
-   // Combo timer decay
-   if(combo>0) comboTimer+=dt; else comboTimer=0;
-   if(combo>1 && comboTimer>220){combo=0;comboTimer=0;}
 }
 
 function drawGameplay(){
-   // BG
-   let bgc = SCENE_BACKGROUNDS[selectedLevelIdx%SCENE_BACKGROUNDS.length];
-   ctx.fillStyle = bgc;ctx.fillRect(0,0,GAME_WIDTH,GAME_HEIGHT);
+   // Simple vertical BG
+   let bgCol = SCENE_BACKGROUNDS[selectedLevelIdx%SCENE_BACKGROUNDS.length];
+   ctx.fillStyle = bgCol;
+   ctx.fillRect(0,0,GAME_WIDTH,GAME_HEIGHT);
 
-   // "Vertical slice": show descent by parallax lines (simulate vertical env)
-   for(let i=1;i<7;++i){
-       let yy = i*100 - (sceneY%100);
-       ctx.globalAlpha=.11*i;
-       ctx.strokeStyle=i%2?"#fff":"#ffb347";ctx.beginPath();
-       ctx.moveTo(60,yy);ctx.lineTo(GAME_WIDTH-60,yy);ctx.stroke();
-       ctx.globalAlpha=1.00;
+   // Draw "scene" - scrolling vertical arena
+   let offsetY=-sceneY;
+   // Draw simple ruins/platforms for flavor
+   for(let i=1;i<8;++i){
+      let py=i*120-40+offsetY;
+      if(py>50 && py<GAME_HEIGHT-20){
+         ctx.save();ctx.globalAlpha=.18+i*.03;
+         ctx.fillStyle="#fff";ctx.fillRect(150+(i%3)*110,py,150-30*(i%2),12+i*1.6);ctx.restore();
+      }
    }
 
-   // Player
-   if(player){
-       ctx.save();
-       ctx.translate(player.x+Math.sin(Date.now()/233)*1.5, player.y);
-       // Body
-       ctx.globalAlpha=.97;
-       ctx.fillStyle=player.col;
-       ctx.beginPath();ctx.ellipse(0,36,22,32,0,0,Math.PI*2);ctx.closePath();ctx.fill();
+   // Player logic & draw
+   if(!player) return;
 
-       // Face/helmet 
-       ctx.globalAlpha=.77;ctx.beginPath();ctx.arc(0,22.5,13.5,Math.PI*2,false);ctx.closePath();ctx.fillStyle="#fff";ctx.fill();
+   // Movement & input
+   if(keys["ArrowLeft"]||keys["a"]) player.vx=-player.speed; else if(keys["ArrowRight"]||keys["d"]) player.vx=player.speed; else player.vx*=.7;
+   if((keys["ArrowUp"]||keys["w"])&&player.onGround){player.vy=player.jumpV;player.onGround=false;}
+   player.x+=player.vx; player.y+=player.vy;
 
-       // Arms (attack anim)
-       if(player.attacking){
-         let arot=(player.attackTimer>8)?-.5:.8;
-         drawLimb(17,-9,-18,-14,.17-arot);
-         drawLimb(-18,-9,+18,-14,.27+arot);
-       } else {
-         drawLimb(17,-10,-18,-13,.13);
-         drawLimb(-18,-10,+18,-13,.27);
-       }
-       function drawLimb(xo1,y1,xo2,y2,r){
-         ctx.save();ctx.rotate(r);
-         ctx.strokeStyle="#fff";ctx.lineWidth=7.3;
-         ctx.beginPath();ctx.moveTo(xo1,y1);ctx.lineTo(xo2,y2);ctx.stroke();ctx.restore();
-       }
-       // Eyes!
-       ctx.globalAlpha=.95;ctx.beginPath();
-       ctx.arc(-4.5,28.5+(Math.sin(Date.now()/340)*1),3.4,.5,.5+Math.PI);ctx.arc(6.5,28.5+(Math.cos(Date.now()/311)*1),3.4,-.6,-.6+Math.PI);ctx.closePath();
-       ctx.fillStyle="#18121a";ctx.fill();
-       // Nameplate
-       ctx.globalAlpha=.66;ctx.font="italic bold 12px Segoe UI";ctx.textAlign="center";ctx.fillText(player.name.toUpperCase(),3.5,-11);
-       ctx.restore();
+   // Gravity & ground check (bottom is y==GAME_HEIGHT-80+sceneY)
+   if(player.y + player.h < sceneY+GAME_HEIGHT-80){player.vy+=player.gravity;}else{
+     player.y = sceneY+GAME_HEIGHT-80-player.h; player.vy=0; player.onGround=true;
    }
+   player.x = clamp(player.x,24,GAME_WIDTH-24-player.w);
 
-   // Enemies
+   // Attacking/combat
+   if(player.attacking && player.attackTimer>0) player.attackTimer--;
+   if(player.attacking && player.attackTimer<=0) player.attacking=false;
+
+   // Camera follows downward progress (vertical)
+   sceneY = Math.max(0,player.y-80);
+
+   // Draw player (simple rectangle w/face)
+   ctx.save();
+   let px = player.x, py = player.y-offsetY;
+   ctx.translate(px+player.w/2,py+player.h/2);
+   if(!player.facingRight)ctx.scale(-1,1);
+   // Body
+   ctx.globalAlpha=.94;ctx.shadowColor="#111";ctx.shadowBlur=7;
+   ctx.strokeStyle="#fff";ctx.lineWidth=4;
+   ctx.beginPath();ctx.arc(0,-16-player.h/8,(player.w+player.h)/5.6,Math.PI*2,0);ctx.stroke();
+   // Main body rect
+   ctx.globalAlpha=.86;ctx.shadowBlur=18;ctx.shadowColor=player.col;
+   ctx.fillStyle=player.col;ctx.beginPath();ctx.ellipse(0,8-player.h/8,player.w/2.3,(player.h)/2.05,0,0,Math.PI*2);ctx.closePath();ctx.fill();
+   // Eyes
+   if(player.attacking){ctx.globalAlpha=.97;ctx.fillStyle="#f7e17c";}
+   else{ctx.globalAlpha=.81;ctx.fillStyle="#fff";}
+   ctx.beginPath();ctx.arc(-10,-6-player.h/8 ,4 ,0 ,Math.PI*2);ctx.arc(10,-6-player.h/8 ,4 ,0 ,Math.PI*2);ctx.closePath();ctx.fill();
+   // Weapon swing (if attacking)
+   if(player.attacking){
+     ctx.save();ctx.rotate(Math.sin(Date.now()/60)*.4);
+     ctx.strokeStyle="#f7e17c";ctx.lineWidth=9+(Math.random()-.5)*2.8;
+     ctx.beginPath();ctx.moveTo(22,-12);ctx.lineTo(38,-32);ctx.stroke();ctx.restore();
+   }
+   // Name label
+   ctx.globalAlpha=.65;ctx.font="bold italic 13px Segoe UI";
+   ctx.rotate(0);ctx.textAlign="center";ctx.textBaseline='top';
+   ctx.fillText(player.name+" ("+getUnlockedChars()[selectedCharIdx].faction+")",0,(player.h/2)-5);
+   ctx.restore();
+
+   // Enemies logic & draw
    for(let e of enemies){
-       if(!e.alive) continue;
-       ctx.save();ctx.translate(e.x,e.y);
-       // Body
-       ctx.globalAlpha=.93;ctx.beginPath();ctx.ellipse(0,e.h/3,e.w/2.3,e.h/2.15,.03,.03+Math.PI*2,false);ctx.closePath();ctx.fillStyle=e.col;ctx.fill();
-       // Face
-       ctx.globalAlpha=.66-e.hp*.01;ctx.beginPath();ctx.arc(0,e.h/3.6,e.w/3.4,.03,.03+Math.PI*2,false);ctx.closePath();ctx.fillStyle="#fff";ctx.fill();
-       // Eyes
-       for(let j=-1;j<=1;j+=2){
-         ctx.globalAlpha=.73-e.hp*.01;ctx.beginPath();ctx.arc(j*7,e.h/5.8+j*1,e.w/8,.03,.03+Math.PI*2,false);ctx.closePath();ctx.fillStyle="#18121a";ctx.fill();
+     if(!e.alive) continue;
+
+     // Move towards player unless attacking/cooldown/idle
+     if(Math.abs(e.x-player.x)>15) e.x+=e.vx*(e.type==="basic"?1:.65);
+     else e.idleTimer--;
+     e.x = clamp(e.x,10,GAME_WIDTH-10-e.w);
+
+     // Jump randomly sometimes or simulate simple AI jump over platforms (not real platforming yet)
+     if(Math.random()<.003 && e.onGround){e.vy=-7;}
+
+     // Gravity & ground check
+     if(e.y + e.h < sceneY+GAME_HEIGHT-80){e.vy+=.6;}else{e.y = sceneY+GAME_HEIGHT-80-e.h;e.vy=0;e.onGround=true;}
+     e.y+=e.vy;
+
+     // If in melee range and cooldown done -> "attack"
+     if(Math.abs(e.x-player.x)<36 && Math.abs(e.y-player.y)<44 && e.cooldown<=0){
+       if(Math.random()<.34){
+         playerHealth-=e.atk*(e.type==="elite"?1.12:.97)|0; e.cooldown=90+(Math.random()*30)|0;
+         combo=0; comboTimer=20;
        }
-       // Health bar above enemy
-       let hw=Math.max(24,e.hp*1.6);
-       if(e.hp<18) { 
-         ctx.globalAlpha=.82-e.hp*.0193; 
-         ctx.strokeStyle="#ff1a36"; 
-         ctx.lineWidth=4.3; 
-         ctx.beginPath(); 
-         ctx.moveTo(-hw/2,-30); 
-         ctx.lineTo(hw/2,-30); 
-         ctx.stroke(); 
+     }else{
+       e.cooldown--;
+     }
+
+     // Draw enemy (ellipse with eyes)
+     let ex=e.x-eyOffset(),ey=e.y-eyOffset();
+     function eyOffset(){return offsetY;}
+     ctx.save();
+     if(e.type==="elite"){ctx.shadowColor="#bc3cff";ctx.shadowBlur=19;}
+     else{ctx.shadowColor="#fff";ctx.shadowBlur=7;}
+     ctx.globalAlpha=.93+(e.type==="elite"?-.08:.08);
+     ctx.beginPath();ctx.ellipse(ex+e.w/2 ,ey+e.h/2 ,e.w/2 ,e.h/2 ,0 ,0 ,Math.PI*2);ctx.closePath();
+     ctx.fillStyle=e.color;ctx.fill();
+     // Eyes
+     if(e.type==="elite"){ctx.globalAlpha=.91;}
+     else{ctx.globalAlpha=.82;}
+     ctx.beginPath();ctx.arc(ex+e.w/3 ,ey+e.h/3 ,4 ,0 ,Math.PI*2);
+     ctx.arc(ex+e.w*2/3 ,ey+e.h/3 ,4 ,0 ,Math.PI*2);ctx.closePath();ctx.fillStyle="#fff";ctx.fill();
+     // Health bar (if elite)
+     if(e.type==="elite"){
+         let healthPct=e.hp/(e.type==="elite"?60:25);
+         let barw=e.w*healthPct;
+         ctx.globalAlpha=.8;ctx.strokeStyle="#222";ctx.lineWidth=7;
+         ctx.beginPath();ctx.moveTo(ex+4 ,ey-6);ctx.lineTo(ex+e.w-4 ,ey-6);ctx.stroke();
+         ctx.globalAlpha=.95;ctx.strokeStyle="#bc3cff";ctx.lineWidth=5;
+         ctx.beginPath();ctx.moveTo(ex+4 ,ey-6);ctx.lineTo(ex+4+barw ,ey-6);ctx.stroke();
+     }
+     // Name label (for demo)
+     if(e.type==="elite"){
+       ctx.font="italic bold 11px Segoe UI";ctx.globalAlpha=.68;ctx.textAlign='center';
+       ctx.fillText("Elite",ex+e.w/2 ,ey-19 );
+     }
+     else{
+       if(Math.random()<.05){}// sparkle effect placeholder
+     }
+     // End enemy draw
+     ctx.restore();
+
+     // Player attack collision & hit logic
+     if(player.attacking && Math.abs((ex+e.w/2)-(player.x+player.w/2))<38 && Math.abs((ey+e.h/2)-(player.y+player.h/2))<44 && e.hp>0){
+         e.hp-=player.atkPower+(Math.random()*3)|0;
+         if(e.hp<=0){ 
+           e.alive=false; 
+           currentScore+=(e.type==="elite"?500:100)*(comboMultiplier());
+           combo++; comboTimer=60;
+         }else{
+           combo++; comboTimer=60;
          }
-       ctx.restore();
+       }
    }
 
-   // HUD Top Bar
+   // Remove dead enemies after short time (simulate fade)
+   enemies=enemies.filter(e=>e.alive||Math.random()>.08);
+
+   // Occasionally spawn enemies as you descend
+   if(enemies.length<4 && Math.random()<.022)spawnEnemy();
+
+   // HUD (top bar): score, health bar, combo meter
    drawHUD();
 
-}
-function comboMult(){
-   return combo>=30?4:
-          combo>=20?3:
-          combo>=15?2.5:
-          combo>=10?2:
-          combo>=5?1.5:
-          1;
-}
-function comboFlash(){
-   comboTimer=0;
+   // Win/Lose conditions for demo (reach bottom or run out of HP)
+   if(playerHealth<=0){
+      state="gameover";
+      if(currentScore>highScore){highScore=currentScore;}
+      localStorage.setItem("forgeborn_highscore",highScore+"");
+      setTimeout(()=>{overlay.innerHTML='<button class="overlay-btn" onclick="restartGame()">Restart</button>';overlay.style.display='block';},500);
+   }
 }
 
 function drawHUD(){
-   // Top bar BG
-   let topBarH = 44;
-   let grad = ctx.createLinearGradient(0,0,GAME_WIDTH,topBarH);
-   grad.addColorStop(0,"#18151c");
-   grad.addColorStop(.7,"#52340f");
-   grad.addColorStop(.9,"#191723");
-   grad.addColorStop(1,"#232e35");
-   ctx.globalAlpha=.95;
-   ctx.fillStyle = grad; 
-   ctx.fillRect(0,0,GAME_WIDTH,topBarH); 
-   // Borders
-   for(let i=0;i<4;i++){
-     let c=["#ffb347","#bc3cff","#f7e17c","#222"][i];
-     if(i===selectedLevelIdx) c="#ff7200";
-     ctx.strokeStyle=c; 
-     ctx.lineWidth=(i==selectedLevelIdx)?3.8:.7+i*.6;
-     ctx.beginPath(); 
-     let xx=(i)*GAME_WIDTH/4+.5; 
-     ctx.moveTo(xx,.5); 
-     xx=(i+1)*GAME_WIDTH/4-.5; 
-     ctx.lineTo(xx,.5); 
-     ctx.stroke();
-   }
-   // Score & HUD Texts
-   let barY = topBarH -13;
-   // Score
-   drawHUDElement("SCORE",currentScore.toLocaleString(),95,barY,"#f7e17c");
-   drawHUDElement("HIGH",highScore.toLocaleString(),240 ,barY,"#bc3cff");
-   drawHUDElement("COMBO",(combo>1?combo+"x":"--"),395 ,barY,"#ffb347");
-   drawHUDElement("MULT",(comboMult()).toFixed(1)+"x",545 ,barY,"#18d860");
-   
-   function drawHUDElement(label,val,x,y,col){
-      // Number/label 
-      ctx.font="bold italic "+(val.length>4?"19":"24")+"px Segoe UI";
-      ctx.textAlign="left";
-      ctx.shadowColor="#232e35";ctx.shadowBlur=7;
-      if(combo>1 && label=="COMBO") col="#ffe480";
-      if(combo>20 && label=="COMBO") col="#ff4fcf";
-      if(label=="MULT"&&combo>=15) col="#bc3cff";
-      if(label=="HIGH") col="#bc3cff";
-      if(label=="SCORE") col="#f7e17c";
-      if(label=="COMBO"&&combo<3) col="#aaa";
-      //
-      let lx=x-55,lw=42;
-      //
-      if(label!=="MULT"){
-         // Label text under number (small)
-         ctx.font="italic bold 13px Segoe UI";
-         ctx.globalAlpha=.67; 
-         lw=Math.max(lw,val.length*10); 
-         let offy=-19,labelCol="#bbb";
-         if(label=="COMBO") labelCol="#bc3cff";
-         else if(label=="HIGH") labelCol="#888de6";
-         else if(label=="SCORE") labelCol="#f7e17c";
-         else labelCol="#aaa";
-         //
-         if(label=="MULT") lw+=14;
-         //
-         //
-         //
-         //
-         //
-         //
-         //
-         //
-         //
-         //
-         //
-         //
-         //
-         //
-         //
-         //
-         //
-         //
-         //
-         //
-         //
-         //
-         //
-         //
-         //
-         //
-         //
-         //
-         //
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-         
-
-         //
-         //
-         //
-         //
-         //
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-         
-
-          
-          
-          
-          
-          
-          
-          
-          
-          
-          
-          
-          
-          
-        
-        
-       
-       
-       
+  // Top bar bg
+  ctx.save();
+  ctx.globalAlpha=.92;
+  ctx.fillStyle="#262335";
+  ctx.fillRect(0,0,GAME_WIDTH,48);
+  
+  // Score display
+  ctx.font="bold 26px Segoe UI";
+  ctx.textAlign='left';
+  ctx.fillStyle="#ffb347";
+  ctx.fillText("Score:",32,32);
+  ctx.font="bold italic 30px Segoe UI";
+  ctx.fillStyle='#fff';
+  let scoreTxt=currentScore.toLocaleString();
+  let hiTxt=("Hi:"+highScore.toLocaleString());
+  ctx.fillText(scoreTxt+" ",128,32);
+  
+  // Combo display/multiplier:
+  let multTxt=(comboMultiplier()>1?comboMultiplier()+"x":"");
+  if(combo>1){
+    let col=["#fff","#ffe572","#ffd700","#f086ff","#bc3cff"];
+    let idx=Math.min(col.length-1,(combo/5)|0);
+    let txt=(combo+" Combo "+multTxt).toUpperCase();
+    ctx.font='bold italic '+(22+Math.min(combo*1.4,26))+'px Segoe UI';
+    ctx.shadowColor="#bc3cff";ctx.shadowBlur=Math.min(combo*1.5,19);
+    ctx.globalAlpha=.76+.14*Math.sin(Date.now()/170);
+    ctx.fillStyle=col[idx];
+    if(comboTimer>10) {
+      for(let i=-1;i<=1;i+=2){
+         for(let j=-1;j<=1;j+=2){
+           let xx=260+i*comboTimer*.8*j+j*i*combo*.16;let yy=32+j*comboTimer*.4*i-i*j*combo*.11;
+           if(xx!=260||yy!=32) {
+             ctx.globalAlpha*=.65;.fillText(txt+" ",xx,yy); 
+           }
+         }
+       }
+      }
+      .fillText(txt+" ",260+(comboTimer%6),32-(comboTimer%4));
+      .globalAlpha=.86;.shadowBlur=7;.fillText(txt+" ",260+(comboTimer%3),32-(comboTimer%3));
+      .shadowBlur=4;.globalAlpha=.68;.fillText(txt+" ",260-(comboTimer%3),32+(comboTimer%3));
+      .shadowBlur=14;.fillText(txt+" ",260+(comboTimer%6),32+(comboTimer%3));
+      
+      //.shadowBlur=Math.min(combo*1.14,11);
+      //.globalAlpha=.93;.fillText(txt+" ",260-(comboTimer%6),32+(comboTimer%4));
+      
+      //.globalAlpha=.83;.shadowBlur=Math.min(combo*1.25,.14*(Date.now()%12)); 
+      
+      
+      //.fillText(txt+" ",260+(comboTimer%8),32-(comboTimer%6));
       
       
       
@@ -701,859 +523,547 @@ function drawHUD(){
       
       
       
-      
-      
-
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-       
-
-        
      
         
+    
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
+   
         
-        
-     
-     
-     
-     
-     
-     
-     
-     
-     
-     
-     
-     
-     
-     
-     
-     
-     
-     
-     
-     
-     
-     
-     
-     
-     
-     
-     
-     
-     
-     
-     
-     
-     
-     
-     
-     
-     
-
-        
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-   
-    
-   
-    
-   
-    
-   
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-
-
-
-
-    
-
-    
-    
-
-    
-    
-
-    
-    
-    
-    
-    
-    
-
-    
-    
-
-
-    
-    
-    
-
-    
-    
-    
-
-    
-    
-    
-
-
-    
-    
-    
-
-    
-    
-    
-
-    
-    
-    
-
-
-    
-    
-    
-
-    
-    
-    
-
-    
-    
-    
-
-
-    
-    
-    
-
-    
-    
-    
-
-    
-    
-    
-
-
-    
-    
-    
-
-    
-    
-    
-
-    
-    
-    
-
-
-    
-    
-    
-
-    
-    
-    
-
-    
-    
-    
-
-
-    
-    
-    
-
-    
-    
-    
-
-    
-    
-    
-
-
-    
-    
-    
-
-    
-    
-    
-
-    
-    
-    
-
-
-    
-    
-    
-
-    
-    
-    
-
-    
-    
-    
-
-
-    
-    
-    
-
-    
-    
-    
-
-    
-    
-    
-
-
-    
-    
-    
-
-    
-    
-    
-
-    
-    
-    
-
-
-    
-    
     
-
-    
-    
-    
-
-    
-    
-    
-
-
-    
-    
-    
-
-    
-    
-    
-
-    
-    
-    
-
-
-    
-    
-    
-
-    
-    
-    
-
-    
-    
-    
-
-
-    
-    
-    
-
-    
-    
-    
-
-    
-    
-    
-
-
-    
-    
-    
-
-    
-    
-    
-
-    
-    
-    
-
-
-    
-    
-    
-    
-
-    
-   
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
    
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-   
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-
-     
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
     
     
     
     
     
         
-            
-                
-                    
-                    
-                        
-                        
-                        
-                        
-                        
-                        
-                        
-                        
-                        
-                        
-                                                    
-                                            
-                                        
-                                    
-                                
-                            
-                        
-                    
-                
-            
-        
     
-}
-// Health Bar (bottom)
-let healthW=Math.max(180,(playerHealth/100)*260);
-let healthX=(GAME_WIDTH-healthW)/2;
-let healthY=GAME_HEIGHT-37;
-// Bar bg
-ctx.save();
-let hbGrad=ctx.createLinearGradient(healthX,healthY+16,GAME_WIDTH-healthX+healthW/8+8,healthY+27);
-hbGrad.addColorStop(0,"#232e35");hbGrad.addColorStop(.45,"#502a11");hbGrad.addColorStop(.8,"#232e35");
-ctx.globalAlpha=.94;ctx.fillStyle=hbGrad;ctx.fillRect(healthX-4.5,healthY-6.5,healthW+9.35,27);
-// Health fg
-let hfgGrad=ctx.createLinearGradient(healthX-12.5+healthW*.15-(playerHealth<33?10*Math.sin(Date.now()/150):0),healthY+6,GAME_WIDTH-healthX+.5+healthW*.95+(playerHealth<33?10*Math.cos(Date.now()/180):0),healthY+19);
-hfgGrad.addColorStop(0,"#ffe480");hfgGrad.addColorStop(.25,"#ff7200");hfgGrad.addColorStop(.72,"#bc3cff");hfgGrad.addColorStop(.98,"#18121a");
-if(playerHealth<33) hfgGrad.addColorStop(.80,"#ff222f");
-//
-ctx.globalAlpha=.96-(playerHealth<33?.45:.15)*Math.abs(Math.sin(Date.now()/150));
-if(playerHealth>60) hfgGrad.addColorStop(.6,"#18d860");
-//
-if(playerHealth<33) { hfgGrad.addColorStop(.90,"#ff222f"); }
-// Bar fg
-//
-let barLerp=(playerHealth/100);
-if(barLerp<.15) barLerp+=Math.abs(Math.sin(Date.now()/240))*.14;
-// Animate bar loss at low HP!
-let hpDisplayW=Math.max(38,(healthW)*barLerp);
-if(playerHealth<33) hpDisplayW*=lerp(.98,.94,.4+.07*Math.sin(Date.now()/110));
-//
-if(hpDisplayW>10)
-{
-	ctx.save();
-	ctx.shadowColor="#ffe48088";ctx.shadowBlur=(playerHealth<40)?12:7.8;
-	ctx.beginPath();ctx.moveTo(healthX+4.5-GAME_WIDTH*.0029-(playerHealth<40?Math.random()*4.3:.6),healthY+7.7-(playerHealth<33?Math.random()*3:.6),hpDisplayW-8+(playerHealth<33?Math.random()*4:-.6),13-(playerHealth<33?Math.random()*4:-.6));
-	ctx.rect(healthX+4.5-GAME_WIDTH*.0029-(playerHealth<40?Math.random()*4.3:.6),healthY+7.7-(playerHealth<33?Math.random()*3:.6),hpDisplayW-8+(playerHealth<33?Math.random()*4:-.6),13-(playerHealth<33?Math.random()*4:-.6));
-	ctx.closePath();	
-	ctx.globalAlpha=.91-(playerHealth<33?.43:.08)*Math.abs(Math.sin(Date.now()/130));
-	ctx.clip();
-	ctx.fillStyle=hfgGrad;	
-	ctx.fillRect(healthX+4-GAME_WIDTH*.0029-(playerHealth<40?Math.random()*4:.6),healthY+7-(playerHealth<33?Math.random()*3:.6),hpDisplayW-8+(playerHealth<33?Math.random()*4:-.6),13-(playerHealth<33?Math.random()*4:-.6));
-	ctx.restore();
-}
-// HP Text overlay
-if(playerHealth>8){
-	ctx.font="italic bold "+ (playerHealth>99?20:(playerHealth>9?22:24)) +"px Segoe UI";
-	ctx.textAlign="center";	ctx.globalAlpha=.95-(playerHealth<33?.35:.09)*Math.abs(Math.sin(Date.now()/90));
-	ctx.shadowColor=(playerHealth<33?"#ff222f":"#502a11");	ctx.shadowBlur=(playerHealth<40)?12:7.8;
-	ctx.lineWidth=.9+(playerHealth<40?.9:.29);	ctx.strokeStyle=(playerHealth<33?"#ff222f":"#232e35");
-	ctx.strokeText(playerHealth+" /100",GAME_WIDTH/2+(playerHealth>9?8:(playerHealth>99?-11:-18)),healthY+22+(playerHealth>99?-1:(playerHealth>9?2:-1)));
-	ctx.globalAlpha=.89-(playerHealth<33?.43:.11)*Math.abs(Math.sin(Date.now()/110));
-	ctx.shadowBlur=(playerHealth<40)?12:7.8;
-	ctx.shadowColor=(playerHealth<33?"#ff222f":"#502a11");
-	ctx.lineWidth=.9+(playerHealth<40?.9:.29);	ctx.strokeStyle=(playerHealth<33?"#ff222f":"#232e35");
-	ctx.strokeText(playerHealth+" /100",GAME_WIDTH/2+(playerHealth>9?8:(playerHealth>99?-11:-18)),healthY+22+(playerHealth>99?-1:(playerHealth>9?2:-1)));
-}
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+    
+   
+
+    
+  
+  
+
+
+
+
+    
+    
+  
+  
+  
+
+
+
+
+    
+    
+  
+
+
+
+
+    
+    
+  
+
+
+
+
+    
+    
+  
+
+
+
+
+    
+    
+  
+
+
+
+
+    
+    
+  
+
+
+
+
+    
+    
+  
+
+
+
+
+    
+    
+  
+
+
+
+
+    
+    
+  
+
+
+
+
+    
+    
+  
+
+
+
+
+    
+    
+  
+
+
+
+
+    
+    
+  
+
+
+
+
+    
+    
+  
+
+
+
+
+    
+    
+  
+
+
+
+
+    
+    
+  
+
+
+
+
+    
+    
+  
+
+
+
+
+    
+    
+  
+
+
+
+
+    
+    
+  
+
+
+
+
+    
+    
+  
+
+
+
+
+    
+    
+  
+
+
+
+
+    
+    
+  
+
+
+
+
+    
+    
+  
+
+
+
+
+    
+    
+  
+
+
+
+
+    
+    
+  
+
+
+
+
+    
+    
+  
+
+
+
+
+    
+    
+  
+
+
+
+
+    
+    
+  
+
+
+  
+  
+
+
+
+
+    
+  
+  
+
+
+
+
+    
+  
+  
+
+
+
+
+    
+  
+  
+
+
+
+
+    
+  
+  
+
+
+
+
+    
+  
+  
+
+
+
+
+    
+  
+  
+
+
+
+
+    
+  
+  
+
+
+
+
+    
+  
+  
+
+
+
+
+    
+  
+  
+
+
+
+
+    
+  
+  
+
+
+
+
+    
+  
+  
+
+
+
+
+    
+  
+  
+
+
+
+
+    
+  
+  
+
+
+
+
+    
+  
+  
+
+
+
+
+    
+  
+  
+
+
+
+
+    
+  
+  
+
+
+
+
+    
+  
+  
+
+
+  
+    
+  
+  
+  
+
+
 }
 
-// =================== PAUSE/GAME OVER ===================
-function endGame(win){
-	state="gameover";
-	if(currentScore>highScore){ highScore=currentScore; localStorage.setItem("forgeborn_highscore",highScore);}
-	setTimeout(()=>{showOverlay(win?"Level Complete!":"Game Over")},400);
-}
-function showOverlay(msg){
-	let html=`<div style="
-	background:#222d;border-radius:16px;padding:64px;margin-top:84px;width:430px;text-align:center;">
-	<h1 style='color:#ffb347;font-family:"Segoe UI",Arial,sans-serif;font-size:34px;margin-bottom:24px;'>${msg}</h1>
-	<div style='color:#ffe480;font-size:22px;margin-bottom:15px;'>Score:&nbsp;<span>${currentScore}</span></div>
-	<div style='color:#bc3cff;font-size:19px;margin-bottom:16px;'>High Score:&nbsp;<span>${highScore}</span></div>
-	<button class='overlay-btn' onclick='window.location.reload()'>Restart</button>
-	</div>`;
-	overlay.innerHTML=html; overlay.style.display="block";
-}
+function comboMultiplier(){
+if(combo>=30)return 4;if(combo>=20)return 3;if(combo>=15)return 2.5;if(combo>=10)return 2;if(combo>=5)return 1.5;return 1;}
 
-// =================== INPUT HANDLING ===================
-window.addEventListener("keydown",(e)=>{
-	if(document.activeElement!==document.body) return;// don't steal typing input!
-	keys[e.key]=true;
+function restartGame(){
+overlay.style.display='none';state='title';}
 
-	if(state==="title"){state="charselect";}
-	else if(state==="charselect"){
-		if(e.key==="ArrowLeft"){selectedCharIdx=Math.max(selectedCharIdx-1,0);}
-		else if(e.key==="ArrowRight"){selectedCharIdx=Math.min(selectedCharIdx+1,getUnlockedChars().length-1);}
-		else if(e.key==="Enter"||e.key===" "||e.key==="z"){
-			if(highScore>=CHARACTERS[selectedCharIdx].unlockedAt) state="levelselect";
-		}
-	}else if(state==="levelselect"){
-		if(e.key==="ArrowUp"){selectedLevelIdx=Math.max(selectedLevelIdx-1,0);}
-		else if(e.key==="ArrowDown"){selectedLevelIdx=Math.min(selectedLevelIdx+1,getUnlockedLevels().length-1);}
-		else if(e.key==="Enter"||e.key===" "||e.key==="z"){
-			if(highScore>=LEVELS[selectedLevelIdx].unlockedAt){startGameplay();}
-		}
-	} else if(state==="playing"){
-		if(e.key==="Escape"){ state="pause";}
-	} else if(state==="pause"){
-		state="playing";
-	} else if(state==="gameover"){
-		window.location.reload();
-	}
+// ================= MAIN LOOP & INPUT ===================
+function render(){
+requestAnimationFrame(render);
+
+if(state=="title")drawTitle();
+else if(state=="charselect")drawCharSelect();
+else if(state=="levelselect")drawLevelSelect();
+else if(state=="playing")drawGameplay();
+
+if(comboTimer>0){comboTimer--;if(comboTimer<=0)combo=0;}
+}
+render();
+
+// Keyboard/gamepad input handling:
+window.addEventListener('keydown',function(e){
+if(state=="title"){state='charselect';return;}
+if(state=="charselect"){
+if(e.key=="ArrowLeft"||e.key=="a")selectedCharIdx=Math.max(0,selectedCharIdx-1);
+if(e.key=="ArrowRight"||e.key=="d")selectedCharIdx=Math.min(CHARACTERS.length-1,selectedCharIdx+1);
+// Only allow select for unlocked chars:
+if((e.key=="Enter"||e.key==" ")){
+if(highScore>=CHARACTERS[selectedCharIdx].unlockedAt){state='levelselect';}
+}
+return;}
+if(state=="levelselect"){
+if(e.key=="ArrowUp"||e.key=="w")selectedLevelIdx=Math.max(0,selectedLevelIdx-1);
+if(e.key=="ArrowDown"||e.key=="s")selectedLevelIdx=Math.min(LEVELS.length-1,selectedLevelIdx+1);
+// Play button triggers:
+if((e.key=="Enter"||e.key==" ")){
+if(highScore>=LEVELS[selectedLevelIdx].unlockedAt){startGamePlay();}
+}
+return;}
+if(state=="playing"){
+keys[e.key]=true;
+// Attack (J / Z / left click)
+if(e.key=="j"||e.key=="z"||e.key==" "){
+if(!player.attacking&&player.onGround){player.attacking=true;player.attackTimer=16;}
+}
+}
 });
-window.addEventListener("keyup",(e)=>{keys[e.key]=false});
+window.addEventListener('keyup',function(e){delete keys[e.key];});
 
-// =================== MAIN LOOP ===================
-function gameLoop(){
-	let now = Date.now(),dt=Math.min((now-lastFrame)/16.67,2); lastFrame=now;
-
-	if(state==="title") drawTitle();
-	else if(state==="charselect") drawCharSelect();
-	else if(state==="levelselect") drawLevelSelect();
-	else if(state==="playing"){
-		updateGameplay(dt);
-		drawGameplay();
-	}else if(state==="pause"){
-		drawGameplay();
-		ctx.save();ctx.globalAlpha=.83;
-		ctx.fillStyle="#18121aee";ctx.fillRect(120,GAME_HEIGHT/2-96,GAME_WIDTH-240,192);
-		ctx.globalAlpha=.92;
-		ctx.font="bold italic 44px Segoe UI";ctx.textAlign="center";ctx.shadowBlur=14;ctx.shadowColor="#bc3cff";
-		ctx.fillStyle="#ffe480";	ctx.fillText("PAUSED",GAME_WIDTH/2,GAME_HEIGHT/2-24);
-		ctx.shadowBlur=8;	ctx.shadowColor="#232e35";
-		ctx.font="italic bold 20px Segoe UI";	ctx.fillStyle="#fff";
-		ctx.fillText("[ Press Escape to Resume ]",GAME_WIDTH/2,GAME_HEIGHT/2+38);
-		ctx.restore();
-	}else if(state==="gameover"){
-		drawGameplay();// freeze frame under modal!
-	}
-	requestAnimationFrame(gameLoop);
+// Mouse support for buttons:
+canvas.addEventListener('click',function(evt){
+let mx = evt.offsetX,my = evt.offsetY;
+// On charselect/select button:
+if(state=="charselect"){
+let chars = CHARACTERS,len=chars.length,s=110,xo=(GAME_WIDTH/2)-(len-1)*s/2;
+for(let i=0;i<len;++i){
+let x=xo+i*s,y=180,r=48;
+if(mx>x-48&&mx<x+48&&my>y+r+56&&my<y+r+56+36&&highScore>=chars[i].unlockedAt&&i==selectedCharIdx){
+state='levelselect';break;}
 }
-lastFrame=Date.now();gameLoop();
+}
+// On levelselect/play button:
+if(state=="levelselect"){
+let levels = LEVELS,s=70,yoff=140,xo=(GAME_WIDTH/2)-120,wid=240,hgt=52;
+for(let i=0;i<levels.length;++i){
+let y=yoff+i*s,x=xo,w=wid,h=hgt;
+if(mx>x+w+14&&mx<x+w+14+92&&my>y+6&&my<y+44&&highScore>=levels[i].unlockedAt&&i==selectedLevelIdx){startGamePlay();}
+}
+}
+});
+
+// Restart button overlay:
+window.restartGame = restartGame;
 
 </script>
 </body>
