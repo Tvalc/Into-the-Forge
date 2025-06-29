@@ -1,3 +1,3 @@
-git add maingame         # Or whatever your html/js filename is!
-git commit -m "Vertical slice update – stage-level-scene structure & combat"
+git add index.html
+git commit -m "Fix main loop & state handling so the game renders in preview"
 git push
