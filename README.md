@@ -1,20 +1,34 @@
-# Into the Forge
+# Forgeborn: Solstice Break – Vertical Slice Demo
 
-A modular, single-file HTML game project.
+A documentation-driven HTML5 game prototype.
 
-## How to Use
-- Open `into the forge.html` in your browser to play or develop.
-- All code, styles, and assets are embedded in the single HTML file.
+## How to Play
 
-## Project Rules
-- **Single-file:** Keep all code, styles, and assets in `into the forge.html`.
-- **Modular:** Use classes and clear structure for all features.
-- **No legacy code:** Do not copy code from other projects unless refactored for this game.
+- **Open `index.html` in your browser**.
+- Choose a character (Korok/Oros/Cercee).
+- Use the following **controls**:
+  - **Arrow keys:** Move left/right/jump.
+  - **Z:** Light attack.
+  - **X:** Heavy attack.
+  - **C:** Dodge.
+- Defeat all enemies to clear the scene.
+- If you lose all health, it's game over.
+- When victorious or defeated, click **Back to Menu** to try again.
 
-## Expanding the Project
-- Add new features by creating new classes or modules inside the `<script>` tag.
-- Use the provided comments as guides for where to add your code.
-- Keep your code clean and organized for maintainability.
+## Design & Features
 
-## Description
-Into the Forge is a new HTML5 game project. Start building your own adventure, mechanics, and world from this clean template! 
+This vertical slice implements the documented design from `/docs/GDD.md` and `/docs/UI_MOCKUPS.md`:
+
+- **Start screen** and **character selection** match documented layouts and styling.
+- **Gameplay UI** uses the specified color scheme (`#151923`, `#232841`, `#7fc3fe`, etc.) and fonts.
+- **First level:** Frozen Wastes Scene 1 with pre-documented enemy types.
+- **Player/enemy logic** implements basic movement/combat per documentation.
+- **Game states:** Menu → Playing → Win/Lose screens per UX docs.
+- **UI elements:** Health bar, score counter, character display match documentation.
+- **Background art:** Loads PNG as specified in docs.
+
+## Expansion
+
+See `/docs/GDD.md` for adding new scenes/levels/characters following modular documented patterns.
+
+---
